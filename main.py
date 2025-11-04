@@ -14,7 +14,11 @@ import streamlit as st
 import json, os, re, requests
 from datetime import datetime, timedelta
 from collections import Counter
-st.write("API Key geladen:", st.secrets["newsapi"]["api_key"])
+import requests
+
+url = f"https://newsapi.org/v2/top-headlines?language=de&pageSize=5&apiKey={st.secrets['newsapi']['api_key']}"
+res = requests.get(url).json()
+st.write(res)
 
 # ----------------------------
 # Files
