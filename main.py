@@ -1,97 +1,53 @@
 import streamlit as st
-import json
 from datetime import datetime
 
 # =============================
-# 🌐 Lumina News - Streamlit Edition
+# 🌐 Lumina News - Offline Streamlit Edition
 # =============================
 
-# ---------- Benutzerverwaltung ----------
-def load_users():
-    try:
-        with open("users.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+# ---------- Session-State Setup ----------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
 
-def save_users(users):
-    with open("users.json", "w") as f:
-        json.dump(users, f)
+# ---------- Dummy User-Daten ----------
+USERS = {"admin": "1234"}
 
-def register_user(username, password):
-    users = load_users()
-    if username in users:
-        return False
-    users[username] = password
-    save_users(users)
-    return True
+# ---------- Offline News-Daten ----------
+NEWS_DB = {
+    "Powi": [
+        {"title": f"Powi-News {i+1}", "desc": f"Beschreibung für Powi-News {i+1}. Schülerinnen und Schüler diskutieren aktuelle Themen.", 
+         "date": f"2025-11-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Wirtschaft": [
+        {"title": f"Wirtschaft-News {i+1}", "desc": f"Beschreibung für Wirtschaft-News {i+1}. Wirtschaftliche Entwicklungen werden analysiert.", 
+         "date": f"2025-10-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Politik": [
+        {"title": f"Politik-News {i+1}", "desc": f"Beschreibung für Politik-News {i+1}. Politische Entscheidungen werden diskutiert.", 
+         "date": f"2025-09-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Sport": [
+        {"title": f"Sport-News {i+1}", "desc": f"Beschreibung für Sport-News {i+1}. Aktuelle Ereignisse im Sport.", 
+         "date": f"2025-08-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Technologie": [
+        {"title": f"Technologie-News {i+1}", "desc": f"Beschreibung für Technologie-News {i+1}. Neue technologische Entwicklungen.", 
+         "date": f"2025-07-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Weltweit": [
+        {"title": f"Weltweit-News {i+1}", "desc": f"Beschreibung für Weltweit-News {i+1}. Globale Ereignisse.", 
+         "date": f"2025-06-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ],
+    "Allgemein": [
+        {"title": f"Allgemein-News {i+1}", "desc": f"Beschreibung für Allgemein-News {i+1}. Verschiedene Themen.", 
+         "date": f"2025-05-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
+    ]
+}
 
-def login_user(username, password):
-    users = load_users()
-    return users.get(username) == password
+CATEGORIES = list(NEWS_DB.keys())
 
-# ---------- News Datenbank ----------
-def load_news():
-    return {
-        "Powi": [
-            {"title": "Schüler diskutieren über Klimaschutz",
-             "desc": "An vielen Schulen wurden Diskussionen zum Thema Klimaschutz veranstaltet. Schülerinnen und Schüler äußerten eigene Vorschläge, wie man lokale CO₂-Emissionen senken könnte.",
-             "date": "2025-11-01", "importance": 4},
-            {"title": "Neue Unterrichtsreform in NRW",
-             "desc": "Das Bildungsministerium kündigt eine Modernisierung des Politikunterrichts an, um mehr Praxisbezug zu schaffen. Experten begrüßen den Schritt.",
-             "date": "2025-10-20", "importance": 5}
-        ],
-        "Wirtschaft": [
-            {"title": "Inflation sinkt leicht im Oktober",
-             "desc": "Die Verbraucherpreise sind im Oktober leicht gesunken. Experten sprechen von einer stabilisierenden Entwicklung.",
-             "date": "2025-11-02", "importance": 5},
-            {"title": "Tech-Unternehmen investieren in KI-Startups",
-             "desc": "Große Technologiekonzerne investieren in europäische KI-Firmen, um Innovation zu fördern.",
-             "date": "2025-10-25", "importance": 4}
-        ],
-        "Politik": [
-            {"title": "Bundestag debattiert über Energiegesetz",
-             "desc": "In Berlin wurde ein neues Energiegesetz diskutiert, das den Ausbau erneuerbarer Energien fördern soll.",
-             "date": "2025-11-03", "importance": 5},
-            {"title": "Außenministerin besucht Ukraine",
-             "desc": "Die Außenministerin traf in Kiew Regierungsvertreter zu Gesprächen über Sicherheitsgarantien.",
-             "date": "2025-10-29", "importance": 5}
-        ],
-        "Sport": [
-            {"title": "Dortmund siegt 3:1 gegen Leipzig",
-             "desc": "Borussia Dortmund gewinnt in einem spannenden Spiel mit 3:1. Trainer und Fans zeigten sich begeistert.",
-             "date": "2025-11-02", "importance": 4},
-            {"title": "Olympia 2028: Neue Disziplinen vorgestellt",
-             "desc": "Das IOC kündigte neue Sportarten an, darunter E-Sport und Klettern.",
-             "date": "2025-10-21", "importance": 3}
-        ],
-        "Technologie": [
-            {"title": "KI-Assistenten werden alltagstauglicher",
-             "desc": "Neue KI-Systeme übernehmen komplexe Aufgaben im Alltag. Forscher betonen ethische Leitlinien.",
-             "date": "2025-11-03", "importance": 5},
-            {"title": "ESA startet neue Asteroidenmission",
-             "desc": "Die ESA startet eine neue Weltraummission, um Asteroiden zu erforschen.",
-             "date": "2025-10-24", "importance": 4}
-        ],
-        "Weltweit": [
-            {"title": "Gipfeltreffen in New York beendet",
-             "desc": "Vertreter aus 60 Ländern einigten sich auf neue Klimaziele.",
-             "date": "2025-10-31", "importance": 5},
-            {"title": "Erdbeben erschüttert Japan",
-             "desc": "Ein Erdbeben der Stärke 6,4 hat Teile Japans erschüttert. Rettungskräfte sind im Einsatz.",
-             "date": "2025-11-01", "importance": 4}
-        ],
-        "Allgemein": [
-            {"title": "Tag der Wissenschaft gefeiert",
-             "desc": "Deutschland feiert den Tag der Wissenschaft mit Ausstellungen und Vorträgen.",
-             "date": "2025-10-20", "importance": 3},
-            {"title": "Neue Bahnstrecke eröffnet",
-             "desc": "Die neue ICE-Strecke zwischen München und Prag verkürzt die Reisezeit erheblich.",
-             "date": "2025-11-01", "importance": 4}
-        ]
-    }
-
-# ---------- Analyzer ----------
+# ---------- Sentiment-Analyse ----------
 POSITIVE = ["erfolgreich", "gewinnt", "stabil", "lobt", "positiv", "neue", "begeistert"]
 NEGATIVE = ["krise", "verlust", "erdbeben", "kritik", "problem", "streit"]
 
@@ -117,44 +73,33 @@ def top_words(news_list):
 
 # ---------- Streamlit Layout ----------
 st.set_page_config(page_title="Lumina News", layout="wide")
-
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
 st.title("🌐 Lumina News - Offline Edition")
 
+# ---------- Login / Registrierung ----------
 if not st.session_state.logged_in:
-    tab1, tab2 = st.tabs(["Login", "Registrieren"])
-
-    with tab1:
-        u = st.text_input("Benutzername")
-        p = st.text_input("Passwort", type="password")
-        if st.button("Einloggen"):
-            if login_user(u, p):
+    st.subheader("🔐 Login")
+    with st.form("login_form"):
+        username = st.text_input("Benutzername")
+        password = st.text_input("Passwort", type="password")
+        submitted = st.form_submit_button("Einloggen")
+        if submitted:
+            if USERS.get(username) == password:
                 st.session_state.logged_in = True
-                st.success(f"Willkommen zurück, {u}!")
-                st.experimental_rerun()
+                st.session_state.username = username
+                st.success(f"Willkommen, {username}!")
             else:
                 st.error("Falsche Zugangsdaten!")
 
-    with tab2:
-        new_u = st.text_input("Neuer Benutzername")
-        new_p = st.text_input("Neues Passwort", type="password")
-        if st.button("Registrieren"):
-            if register_user(new_u, new_p):
-                st.success("Registrierung erfolgreich!")
-            else:
-                st.error("Benutzer existiert bereits.")
-else:
-    news_db = load_news()
-    pages = list(news_db.keys()) + ["Analyse Gesamt"]
+# ---------- Hauptseite ----------
+if st.session_state.logged_in:
+    st.sidebar.title(f"👤 {st.session_state.username}")
     st.sidebar.title("🗂️ Kategorien")
+    pages = CATEGORIES + ["Analyse Gesamt"]
     choice = st.sidebar.radio("Wähle Kategorie:", pages)
 
     if choice != "Analyse Gesamt":
         st.header(f"📰 {choice}")
-        news_list = news_db[choice]
-
+        news_list = NEWS_DB[choice]
         sort_option = st.radio("Sortieren nach:", ["Wichtigkeit", "Datum"])
         if sort_option == "Datum":
             news_list = sorted(news_list, key=lambda x: x["date"], reverse=True)
@@ -164,8 +109,7 @@ else:
         for n in news_list:
             st.subheader(f"{n['title']} ({n['date']})")
             st.write(n["desc"])
-            sentiment = analyze_sentiment(n["desc"])
-            st.write(f"**Stimmung:** {sentiment}")
+            st.write(f"**Stimmung:** {analyze_sentiment(n['desc'])}")
             st.divider()
 
         st.markdown("### 🔍 Analyse dieser Kategorie")
@@ -174,7 +118,7 @@ else:
     else:
         st.header("📊 Gesamtanalyse")
         overall = {}
-        for cat, news_list in news_db.items():
+        for cat, news_list in NEWS_DB.items():
             sentiments = [analyze_sentiment(n["desc"]) for n in news_list]
             pos = sentiments.count("😊 Positiv")
             neg = sentiments.count("😞 Negativ")
