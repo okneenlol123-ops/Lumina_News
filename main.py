@@ -1,47 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Lumina News - Offline CLI (Single-file)
-Features:
- - 7 Kategorien x ~10 realistische Artikel (fest eingebettet)
- - Benutzerverwaltung (users.json)
- - Einstellungen (settings.json)
- - Lazily-evaluierter, lokaler News-Analyzer:
-     * Top-Keywords (global & per Kategorie)
-     * Sentiment (lexikonbasiert, deutsch)
-     * Headline-Scoring (0-100)
-     * Trend-Zeitreihen nach Monat (YYYY-MM)
- - Cleanes CLI-Menü, Paging, Suche, Export
- - Keine externen Module (nur Standardlib)
-Usage:
-    python main.py
+Lumina News - Offline CLI (optimiert, lazy analyzer, Startbanner, exit-summary)
+Speichern als main.py und ausführen: python main.py
+Keine externen Abhängigkeiten.
 """
 
-import json
-import os
-import sys
-import math
-import re
 from datetime import datetime
-from collections import Counter, defaultdict
+from collections import Counter
+import json
+import math
+import os
+import re
+import sys
 
-# ------------------------------
+# -----------------------
 # Dateipfade
-# ------------------------------
+# -----------------------
 USERS_FILE = "users.json"
 SETTINGS_FILE = "settings.json"
 
-# ------------------------------
-# Hilfsfunktionen: JSON IO sicher
-# ------------------------------
+# -----------------------
+# Hilfsfunktionen: JSON Safe IO
+# -----------------------
 def safe_load_json(path, default):
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return default
     except Exception as e:
         print(f"[WARN] Fehler beim Laden von {path}: {e}")
-        return default
+    return default
 
 def safe_save_json(path, data):
     try:
@@ -50,521 +38,328 @@ def safe_save_json(path, data):
     except Exception as e:
         print(f"[ERROR] Fehler beim Speichern von {path}: {e}")
 
-# ------------------------------
-# Dataset: 7 Kategorien x 10 Artikel (realistisch formuliert)
-# ------------------------------
+# -----------------------
+# Dataset (realistisch formulierte Artikel)
+# 7 Kategorien, je 6 Artikel (kompakt, kann leicht erweitert werden)
+# -----------------------
 def build_news_dataset():
-    # Jede Nachricht hat: title, description (mehrere Sätze), link, importance (1-5), date "YYYY-MM-DD"
-    # Die Texte hier sind realistisch gehalten, ideal für offline-Analysen.
-    data = {
+    return {
         "Powi": [
             {"title":"Neue Lehrpläne stärken kritisches Denken",
              "description":"Das Kultusministerium hat überarbeitete Lehrpläne vorgestellt, die kritisches Denken und Medienkompetenz in den Mittelpunkt stellen. "
-                          "Schwerpunkte liegen auf Quellenkritik, Projektlernen und digitaler Kompetenz. "
-                          "Lehrkräfte erhalten Fortbildungen, um die neuen Inhalte umzusetzen. "
-                          "Pilotprojekte laufen bereits in mehreren Bundesländern. "
-                          "Eltern- und Schülervertretungen wurden in die Erarbeitung einbezogen.",
-             "link":"https://example.org/powi/lehrplaene","importance":5,"date":"2025-09-15"},
-            {"title":"Digitaler Unterricht wird weiter ausgebaut",
-             "description":"Ein Förderprogramm stellt Schulträgern Mittel für Infrastruktur und Endgeräte bereit. "
-                          "Lehrkräfte sollen schrittweise in digitalen Didaktiken geschult werden. "
-                          "Datenschutz und pädagogische Konzepte gelten als zentrale Punkte. "
-                          "Die Pilotphase startet noch dieses Jahr in 120 Schulen. "
-                          "Ziel ist ein nachhaltiger Ausbau der digitalen Bildung.",
-             "link":"https://example.org/powi/digital","importance":4,"date":"2025-10-01"},
-            {"title":"Schulfahrten: Zuschüsse ausgeweitet",
-             "description":"Bund und Länder haben vereinbart, Zuschüsse für mehrtägige Schulfahrten auszuweiten. "
-                          "Ziel ist, soziale Teilhabe unabhängig vom Einkommen zu ermöglichen. "
-                          "Anträge sollen künftig digitalisiert und vereinfacht werden. "
-                          "Kulturelle und naturnahe Programme sind vorrangig vorgesehen. "
-                          "Verbände begrüßen die Maßnahme, fordern aber zusätzliche Mittel für Inklusion.",
-             "link":"https://example.org/powi/schulfahrten","importance":3,"date":"2025-07-20"},
-            {"title":"MINT-Förderung: Talente früh identifizieren",
-             "description":"Ein neues Programm unterstützt MINT-Angebote an Schulen und Workshops für Schüler. "
-                          "Mentoring, Wettbewerbe und Kooperationen mit Hochschulen sind Bestandteil. "
-                          "Besonders Mädchen und unterrepräsentierte Gruppen sollen gefördert werden. "
-                          "Regionale Netzwerke stärken die Umsetzung. "
-                          "Langfristiges Ziel ist die Sicherung von Fachkräften.",
-             "link":"https://example.org/powi/mint","importance":4,"date":"2025-05-05"},
+                          "Lehrkräfte werden in Quellenkritik und Projektlernen fortgebildet. "
+                          "Pilotprojekte laufen in mehreren Bundesländern. "
+                          "Eltern- und Schülervertretungen waren eingebunden. "
+                          "Langfristig soll die Studier- und Berufsvorbereitung verbessert werden.",
+             "link":"https://example.org/powi/lehrplaene", "importance":5, "date":"2025-09-15"},
+            {"title":"Digitaler Unterricht: Ausstattung kommt",
+             "description":"Ein Förderprogramm liefert Hardware und Infrastruktur an Schulen. "
+                          "Datenschutz und Methodik sind Teil der Maßnahmen. "
+                          "Lehrkräfte erhalten begleitende Schulungen. "
+                          "Die Pilotregionen berichten erste positive Effekte. "
+                          "Ziel ist nachhaltige digitale Bildung.",
+             "link":"https://example.org/powi/digital", "importance":4, "date":"2025-10-01"},
+            {"title":"Schulfahrten werden gefördert",
+             "description":"Zuschüsse für mehrtägige Schulfahrten werden ausgeweitet, um soziale Teilhabe zu stärken. "
+                          "Anträge werden digitalisiert, um Zugang zu erleichtern. "
+                          "Kulturelle Programme werden besonders unterstützt. "
+                          "Verbände fordern parallel Inklusionsmittel. "
+                          "Start der Maßnahme ist noch dieses Jahr.",
+             "link":"https://example.org/powi/schulfahrten", "importance":3, "date":"2025-07-20"},
+            {"title":"MINT-Initiative startet regionale Clubs",
+             "description":"Regionale MINT-Clubs für Schüler fördern Interesse an Naturwissenschaften. "
+                          "Mentoring-Programme verbinden Schulen und Hochschulen. "
+                          "Besonders Mädchen werden gezielt angesprochen. "
+                          "Wettbewerbe und Workshops begleiten die Initiative. "
+                          "Langfristig sollen Fachkräfte gefördert werden.",
+             "link":"https://example.org/powi/mint", "importance":4, "date":"2025-05-05"},
             {"title":"Schulsozialarbeit wird ausgebaut",
-             "description":"Aufgrund gestiegener Nachfrage werden zusätzliche Stellen für Schulsozialarbeit geschaffen. "
-                          "Prävention und psychosoziale Unterstützung stehen im Mittelpunkt. "
-                          "Kooperationen mit Jugendämtern und Beratungsstellen sind geplant. "
-                          "Die Maßnahme soll Fehlzeiten reduzieren und Integration fördern. "
-                          "Erste Evaluationen melden positive Effekte.",
-             "link":"https://example.org/powi/sozialarbeit","importance":4,"date":"2025-04-12"},
-            {"title":"Berufsorientierung: Pflichtmodule an Gymnasien",
-             "description":"Gymnasien führen verpflichtende Module zur Berufsorientierung und Bewerbungstrainings ein. "
-                          "Unternehmen bieten Praktika und Workshops an. "
-                          "Ziel ist eine bessere Vorbereitung auf Studium und Arbeitswelt. "
-                          "Die ersten Pilotkurse starten im kommenden Schuljahr. "
-                          "Schulen berichten von verstärkter Nachfrage seitens der Schüler.",
-             "link":"https://example.org/powi/berufsorientierung","importance":3,"date":"2025-06-10"},
-            {"title":"Sprachförderung für Grundschulen erweitert",
-             "description":"Zusätzliche Ressourcen fließen in frühe Sprachförderprogramme, besonders in mehrsprachigen Regionen. "
-                          "Lehrkräfte bekommen Material und Trainings, um gezielt zu fördern. "
-                          "Frühe Interventionen sollen Lernrückstände verhindern. "
-                          "Elternarbeit wird als wichtiger Faktor gesehen. "
-                          "Erste Ergebnisse deuten auf geringere Defizite hin.",
-             "link":"https://example.org/powi/sprach","importance":3,"date":"2025-02-18"},
-            {"title":"Schulbauoffensive: Klassenzimmer modernisieren",
-             "description":"Das Programm sieht die Sanierung vieler Schulgebäude und energieeffiziente Modernisierung vor. "
-                          "Digitale Ausstattung ist integraler Bestandteil. "
-                          "Kommunen erhalten finanzielle Unterstützung für Planungsphasen. "
-                          "Priorität haben baulich dringende Standorte. "
-                          "Projekte sollen in den nächsten drei Jahren umgesetzt werden.",
-             "link":"https://example.org/powi/schulbau","importance":5,"date":"2025-03-28"},
-            {"title":"Nachhaltigkeitswettbewerb fördert Schulideen",
-             "description":"Ein Wettbewerb prämiert Projekte zu Energieeinsparung, Recycling und Bildung für nachhaltige Entwicklung. "
-                          "Gewinner erhalten Finanzierung und Mentoren. "
-                          "Die Initiative stärkt praktisches Lernen und Verantwortungsbewusstsein. "
-                          "Schulen vernetzen sich über regionale Plattformen. "
-                          "Viele Projekte zeigen direkte Einsparungen im Alltag.",
-             "link":"https://example.org/powi/nachhaltigkeit","importance":2,"date":"2025-01-31"},
-            {"title":"Hybridunterricht: Pilotphase zeigt gemischte Ergebnisse",
-             "description":"Einige Schulen testen hybridere Lernkonzepte mit Präsenz- und Onlinephasen. "
-                          "Schüler und Lehrkräfte berichten von mehr Flexibilität, aber auch technischen Herausforderungen. "
-                          "Evaluationen sollen Best-Practices herausarbeiten. "
-                          "Digitale Coaches werden zur Unterstützung eingesetzt. "
-                          "Langfristige Modelle bleiben noch zu definieren.",
-             "link":"https://example.org/powi/hybrid","importance":3,"date":"2025-11-03"},
+             "description":"Mehr Schulsozialarbeiter sollen psychosoziale Angebote für Schüler bereitstellen. "
+                          "Prävention und Frühintervention sind zentrale Ziele. "
+                          "Kooperation mit Jugendhilfe wird gestärkt. "
+                          "Erste Pilotregionen melden sinkende Fehlzeiten. "
+                          "Fördermittel wurden bewilligt.",
+             "link":"https://example.org/powi/sozial", "importance":4, "date":"2025-04-12"},
+            {"title":"Berufsorientierung: Pflichtmodul geplant",
+             "description":"Schulen führen verpflichtende Module zur Berufsorientierung ein. "
+                          "Praktika und Bewerbungstrainings werden enger mit Unternehmen vernetzt. "
+                          "Schüler sollen realistische Berufsbilder kennenlernen. "
+                          "Ziele sind bessere Übergänge in Ausbildung und Studium. "
+                          "Projektstarts sind regional gestaffelt.",
+             "link":"https://example.org/powi/beruf", "importance":3, "date":"2025-06-10"},
         ],
         "Wirtschaft": [
             {"title":"Industrieproduktion zeigt Aufwärtstrend",
-             "description":"Die Industrieproduktion verzeichnet moderate Zuwächse, vor allem im Maschinenbau. "
-                          "Investitionen in Automatisierung und Effizienz steigen. "
-                          "Analysten warnen vor möglichen Lieferkettenrisiken. "
-                          "Exportnachfrage bleibt ein Treiber für Wachstum. "
-                          "Unternehmen investieren stärker in Digitalisierung.",
-             "link":"https://example.org/wirtschaft/industrie","importance":4,"date":"2025-10-20"},
+             "description":"Die Industrieproduktion verbucht moderate Zuwächse, vor allem im Maschinenbau. "
+                          "Exportaufträge und Investitionen in Automatisierung stärken das Wachstum. "
+                          "Analysten warnen vor Lieferkettenrisiken, bleiben aber überwiegend optimistisch. "
+                          "Unternehmen investieren in Digitalisierung. "
+                          "Die Stimmung hat sich gegenüber dem Vorjahr verbessert.",
+             "link":"https://example.org/wirtschaft/industrie", "importance":4, "date":"2025-10-20"},
             {"title":"Mittelstand investiert in KI-Lösungen",
-             "description":"Viele Mittelständler setzen KI ein, um Prozesse zu optimieren und Service zu verbessern. "
-                          "Pilotprojekte werden durch Förderprogramme unterstützt. "
-                          "Fachkräftesicherung und Datenschutz sind zentrale Herausforderungen. "
-                          "Unternehmen verzeichnen erste Effizienzgewinne. "
-                          "Die Nachfrage nach KI-Consulting steigt.",
-             "link":"https://example.org/wirtschaft/ki","importance":4,"date":"2025-09-05"},
+             "description":"Viele mittelständische Firmen setzen auf KI zur Automatisierung und Effizienzsteigerung. "
+                          "Förderprogramme unterstützen Pilotprojekte. "
+                          "Datenschutz und Qualifizierung bleiben offene Fragen. "
+                          "Erste Produktivitätsgewinne werden berichtet. "
+                          "Berater verzeichnen starkes Interesse.",
+             "link":"https://example.org/wirtschaft/ki", "importance":4, "date":"2025-09-05"},
             {"title":"Arbeitsmarkt bleibt robust",
-             "description":"Trotz konjunktureller Spannungen zeigt der Arbeitsmarkt Stabilität. "
-                          "Zahlreiche offene Stellen bestehen besonders in IT, Handwerk und Pflege. "
-                          "Weiterbildungsprogramme werden ausgebaut, um Fachkräfte zu sichern. "
-                          "Gewerkschaften verhandeln über Tarifabschlüsse in mehreren Branchen. "
-                          "Die Beschäftigungsdynamik bleibt insgesamt positiv.",
-             "link":"https://example.org/wirtschaft/arbeitsmarkt","importance":3,"date":"2025-08-14"},
-            {"title":"Inflationsrate stabilisiert sich",
-             "description":"Die Inflationsrate hat sich gegenüber dem Vorjahr abgeschwächt. "
-                          "Energiepreise und Nahrungsmittel bleiben regional volatil. "
-                          "Zentralbanken signalisieren vorsichtigen Optimismus. "
-                          "Verbraucher spüren erste Entlastungen im Alltag. "
-                          "Langfristige Stabilität hängt von globalen Rohstoffpreisen ab.",
-             "link":"https://example.org/wirtschaft/inflation","importance":4,"date":"2025-07-30"},
-            {"title":"Startups sichern sich Finanzierung für grüne Technologien",
-             "description":"Investoren zeigen verstärktes Interesse an Startups mit nachhaltigen Lösungen. "
-                          "Projekte in Energiespeicherung und nachhaltiger Mobilität erhalten Mittel. "
-                          "Acceleratoren unterstützen Skalierung und Markteintritt. "
-                          "Politische Anreize ergänzen private Finanzierung. "
-                          "Erste Skalierungseffekte sind sichtbar.",
-             "link":"https://example.org/wirtschaft/startups","importance":3,"date":"2025-06-22"},
-            {"title":"Exportsektor profitiert von Asien-Nachfrage",
-             "description":"Deutsche Exporte in ausgewählte asiatische Märkte verzeichnen ein Plus. "
-                          "Maschinenbau und Spezialchemie sind gefragt. "
-                          "Unternehmen stärken regionale Vertriebsnetzwerke. "
-                          "Wechselkursschwankungen bleiben ein Risikofaktor. "
-                          "Analysten sehen Chancen, aber auch intensiven Wettbewerb.",
-             "link":"https://example.org/wirtschaft/export","importance":3,"date":"2025-05-12"},
-            {"title":"Immobilienmarkt zeigt regionale Divergenz",
-             "description":"Während Ballungsräume hohe Preise halten, normalisiert sich der Markt in Randregionen. "
-                          "Förderprogramme für bezahlbares Wohnraum werden ausgeweitet. "
-                          "Bauunternehmen klagen über Material- und Personalmangel. "
-                          "Die politische Debatte um Mietspolitik bleibt intensiv. "
-                          "Marktveränderungen sind lokal sehr unterschiedlich.",
-             "link":"https://example.org/wirtschaft/immobilien","importance":3,"date":"2025-04-01"},
-            {"title":"Lieferketten setzen vermehrt auf Resilienz",
-             "description":"Unternehmen diversifizieren Zulieferer und setzen verstärkt auf Nearshoring. "
-                          "Digitale Tools verbessern Transparenz entlang der Lieferketten. "
-                          "Kostendruck und Qualitätssicherung bleiben zentrale Herausforderungen. "
-                          "Strategische Entscheidungen variieren branchenabhängig. "
-                          "Eine robustere Struktur soll Ausfälle mindern.",
-             "link":"https://example.org/wirtschaft/lieferketten","importance":3,"date":"2025-03-18"},
-            {"title":"Energieeffizienz wird zur Unternehmensstrategie",
-             "description":"Steigende Energiekosten treiben Investitionen in Effizienzmaßnahmen an. "
-                          "Abwärmenutzung und Energiemanagement gewinnen an Bedeutung. "
-                          "Förderprogramme erleichtern die Umsetzung größerer Projekte. "
-                          "Langfristig sollen Betriebskosten gesenkt werden. "
-                          "Nachhaltigkeitskennzahlen werden wichtiger für Investoren.",
-             "link":"https://example.org/wirtschaft/energie","importance":2,"date":"2025-02-10"},
-            {"title":"Finanzbildung: Schulen kooperieren mit Institutionen",
-             "description":"Programme zur Finanzbildung werden in Schulen vermehrt angeboten. "
-                          "Workshops und Planspiele vermitteln praktische Kenntnisse. "
-                          "Kritiker fordern neutrale Inhalte, während Befürworter praktische Relevanz sehen. "
-                          "Die Nachfrage nach solchen Angeboten steigt. "
-                          "Projekte werden regional skaliert.",
-             "link":"https://example.org/wirtschaft/finanzbildung","importance":2,"date":"2025-01-05"},
+             "description":"Die Arbeitslosenquote zeigt stabile Trends, offene Stellen vor allem in IT und Pflege. "
+                          "Weiterbildung wird als Schlüssel zur Fachkräftesicherung gesehen. "
+                          "Gewerkschaften verhandeln in mehreren Branchen. "
+                          "Unternehmen melden anhaltenden Bedarf trotz wirtschaftlicher Schwankungen. "
+                          "Regionale Unterschiede bleiben bestehen.",
+             "link":"https://example.org/wirtschaft/arbeitsmarkt", "importance":3, "date":"2025-08-14"},
+            {"title":"Startups sichern Finanzierung für grüne Techs",
+             "description":"Investoren finanzieren vermehrt Startups im Bereich Energiespeicher und Mobilität. "
+                          "Acceleratoren unterstützen Skalierung. "
+                          "Politische Anreize flankieren private Mittel. "
+                          "Markteintritte werden beschleunigt. "
+                          "Erste Skalierungserfolge sind sichtbar.",
+             "link":"https://example.org/wirtschaft/startups", "importance":3, "date":"2025-06-22"},
+            {"title":"Export nach Asien nimmt zu",
+             "description":"Deutsche Exporte in bestimmte asiatische Märkte steigen, besonders im Maschinenbau. "
+                          "Unternehmen bauen Vertriebsnetzwerke aus. "
+                          "Wechselkurse bleiben Einflussfaktor. "
+                          "Logistikoptimierungen reduzieren Lieferzeiten. "
+                          "Neue Partnerschaften werden geschlossen.",
+             "link":"https://example.org/wirtschaft/export", "importance":3, "date":"2025-05-12"},
+            {"title":"Energieeffizienz gewinnt an Bedeutung",
+             "description":"Unternehmen investieren in Energieeffizienz und Abwärmenutzung zur Kostensenkung. "
+                          "Förderprogramme erleichtern Investitionen. "
+                          "Nachhaltigkeitskennzahlen werden wichtiger für Investoren. "
+                          "Langfristig sollen Betriebskosten sinken. "
+                          "Maßnahmen werden branchenübergreifend diskutiert.",
+             "link":"https://example.org/wirtschaft/energie", "importance":3, "date":"2025-02-10"},
         ],
         "Politik": [
-            {"title":"Koalitionsgespräche erreichen finale Phase",
-             "description":"Nach intensiven Verhandlungen stehen die Koalitionspartner vor dem Abschluss. "
-                          "Kernpunkte betreffen Klima, Soziales und Infrastrukturfinanzierung. "
-                          "Beide Seiten zeigen Kompromissbereitschaft bei Teilen des Pakets. "
-                          "Die Öffentlichkeit und Medien verfolgen die Gespräche aufmerksam. "
-                          "Ein Abschluss wird in den nächsten Tagen erwartet.",
-             "link":"https://example.org/politik/koalition","importance":5,"date":"2025-11-01"},
+            {"title":"Koalitionsgespräche in entscheidender Phase",
+             "description":"Verhandlungen über die Regierungsbildung treten in die finale Phase. "
+                          "Kompromisse zu Klima- und Finanzfragen sind zu erwarten. "
+                          "Die Öffentlichkeit verfolgt die Gespräche intensiv. "
+                          "Parteien signalisieren Kompromissbereitschaft in Teilfragen. "
+                          "Ein Abschluss wird in Kürze erwartet.",
+             "link":"https://example.org/politik/koalition", "importance":5, "date":"2025-11-01"},
             {"title":"Transparenzgesetz: Lobbykontakte im Fokus",
-             "description":"Ein Entwurf sieht erweiterte Offenlegungspflichten für Lobbykontakte vor. "
-                          "Ziel ist mehr Nachvollziehbarkeit politischer Einflussnahme. "
-                          "Verbände kritisieren erhöhten Verwaltungsaufwand. "
-                          "Befürworter sehen einen Gewinn an Vertrauen in politische Prozesse. "
-                          "Das Gesetz durchläuft mehrere Beratungsstufen.",
-             "link":"https://example.org/politik/transparenz","importance":4,"date":"2025-07-02"},
-            {"title":"Datenschutz & KI: Parlament diskutiert Anpassungen",
-             "description":"Parlamentarische Beratungen zu Datenschutzregelungen im Kontext von KI haben begonnen. "
-                          "Die Balance zwischen Innovation und Grundrechtsschutz steht im Mittelpunkt. "
-                          "Experten und Verbände werden angehört. "
-                          "Branchenspezifische Lösungen bleiben umstritten. "
-                          "Weitere Hearings sind terminiert.",
-             "link":"https://example.org/politik/datenschutz","importance":5,"date":"2025-05-19"},
-            {"title":"Kommunen erhalten mehr Planungshilfe",
-             "description":"Bundesmittel unterstützen Kommunen bei Investitions- und Digitalisierungsprojekten. "
-                          "Ziel ist die langfristige Handlungsfähigkeit der Verwaltungen. "
-                          "Besonders strukturschwache Regionen profitieren von Zuwendungen. "
-                          "Planungsmittel beschleunigen Projektzyklen. "
+             "description":"Ein Entwurf für erweiterte Offenlegungspflichten will Lobbykontakte transparenter machen. "
+                          "Verbandsseite kritisiert den Verwaltungsaufwand. "
+                          "Befürworter sehen einen Gewinn an Vertrauen. "
+                          "Das Gesetz durchläuft parlamentarische Beratungen. "
+                          "Zivilgesellschaftliche Gruppen unterstützen die Debatte.",
+             "link":"https://example.org/politik/transparenz", "importance":4, "date":"2025-07-02"},
+            {"title":"Datenschutz & KI: Debatten im Parlament",
+             "description":"Anpassungen des Datenschutzrechts im Kontext von KI werden diskutiert. "
+                          "Balance zwischen Innovation und Grundrechtsschutz steht im Mittelpunkt. "
+                          "Sachverständige und Branchenvertreter werden angehört. "
+                          "Regulatorische Leitplanken sind gefragt. "
+                          "Entscheidungen werden folgen.",
+             "link":"https://example.org/politik/datenschutz", "importance":5, "date":"2025-05-19"},
+            {"title":"Kommunale Investitionshilfen beschlossen",
+             "description":"Bundesmittel unterstützen kommunale Digitalisierungs- und Infrastrukturprojekte. "
+                          "Ziel ist die langfristige Stärkung lokaler Handlungsfähigkeit. "
+                          "Priorität haben strukturschwache Regionen. "
+                          "Anträge werden schrittweise bearbeitet. "
                           "Kommunen begrüßen die Unterstützung.",
-             "link":"https://example.org/politik/kommunen","importance":3,"date":"2025-10-18"},
-            {"title":"Integration: Programme für Arbeitsmarktintegration",
-             "description":"Ausbau von Sprachkursen und Qualifizierungsmaßnahmen für Zugewanderte ist geplant. "
-                          "Kooperationen mit Betrieben erleichtern Praktika und Ausbildungseinstiege. "
-                          "Ziel ist nachhaltige Teilhabe und Beschäftigung. "
-                          "Regionale Initiativen werden verstärkt gefördert. "
-                          "Erste Pilotprojekte berichten von Erfolgen.",
-             "link":"https://example.org/politik/integration","importance":3,"date":"2025-06-25"},
-            {"title":"Innenpolitik: Cyberabwehr gestärkt",
-             "description":"Bund und Länder erhöhen Ressourcen für Cyberabwehr und IT-Sicherheit. "
-                          "Kritische Infrastrukturen stehen im Fokus. "
-                          "Zusammenarbeit mit Forschung und Wirtschaft wird ausgebaut. "
-                          "Ziel ist besserer Schutz vor Attacken. "
-                          "Ausbildungsplätze für Spezialisten werden ausgebaut.",
-             "link":"https://example.org/politik/cyber","importance":4,"date":"2025-04-10"},
-            {"title":"Wahlrecht-Debatte um kommunales Wahlalter",
-             "description":"Diskussionen über eine mögliche Absenkung des Wahlalters auf kommunaler Ebene werden geführt. "
-                          "Befürworter erhoffen mehr Jugendbeteiligung. "
-                          "Gegner warnen vor unzureichender Reife. "
-                          "Pilottests in Gemeinden könnten erste Erkenntnisse liefern. "
-                          "Die Debatte bleibt kontrovers.",
-             "link":"https://example.org/politik/wahlrecht","importance":2,"date":"2025-03-03"},
-            {"title":"Rentenkommission legt Zwischenbericht vor",
-             "description":"Eine Kommission präsentiert Optionen für die Stabilisierung des Rentensystems. "
-                          "Diskutiert werden flexible Übergänge und Finanzierungsmechanismen. "
-                          "Breiter gesellschaftlicher Dialog ist geplant. "
-                          "Konkrete Vorschläge sollen im nächsten Jahr folgen. "
-                          "Stakeholder zeigen unterschiedliche Perspektiven.",             "link":"https://example.org/politik/rente","importance":4,"date":"2025-02-14"},
-            {"title":"Außenpolitik: Dialog mit Nachbarn intensiviert",
-             "description":"Die Regierung hat den diplomatischen Austausch mit Nachbarstaaten vertieft. "
-                          "Schwerpunkte sind Handel, Forschung und Energie. "
-                          "Regelmäßige Ministertreffen sollen Vertrauen aufbauen. "
-                          "Analysten sehen strategische Vorteile. "
-                          "Abkommen sollen in den kommenden Monaten finalisiert werden.",
-             "link":"https://example.org/politik/aussen","importance":3,"date":"2025-01-21"},
-            {"title":"Sozialpolitik: Programme gegen Armut",
-             "description":"Neue regionale Programme unterstützen vulnerable Haushalte. "
-                          "Ziel ist die Integration in Arbeit und Bildung. "
-                          "Kooperationen mit NGOs sollen Wirkung verstärken. "
-                          "Pilotprojekte zeigen erste positive Ergebnisse. "
-                          "Weitere Ausweitungen sind in Planung.",
-             "link":"https://example.org/politik/sozial","importance":3,"date":"2025-11-02"},
+             "link":"https://example.org/politik/kommunen", "importance":3, "date":"2025-10-18"},
+            {"title":"Integration: Programme für Arbeitsmarkt",
+             "description":"Sprach- und Qualifizierungsprogramme für Zugewanderte werden ausgebaut. "
+                          "Kooperationen mit Betrieben erleichtern Praktika. "
+                          "Ziele sind nachhaltige Teilhabe und Beschäftigung. "
+                          "Regionale Initiativen werden gefördert. "
+                          "Erste Evaluationen zeigen positive Trends.",
+             "link":"https://example.org/politik/integration", "importance":3, "date":"2025-06-25"},
+            {"title":"Innenpolitik: Cyberabwehr wird gestärkt",
+             "description":"Ressourcen für Cyberabwehr und IT-Sicherheit werden erhöht. "
+                          "Kritische Infrastruktur steht im Fokus. "
+                          "Zusammenarbeit mit Forschungseinrichtungen wird ausgebaut. "
+                          "Ausbildungskapazitäten für Spezialisten sollen erweitert werden. "
+                          "Maßnahmen sollen die Resilienz erhöhen.",
+             "link":"https://example.org/politik/cyber", "importance":4, "date":"2025-04-10"},
         ],
         "Sport": [
-            {"title":"Nationalteam gewinnt wichtiges Qualifikationsspiel",
-             "description":"Das Nationalteam sicherte sich einen knappen Sieg dank taktischer Disziplin. "
-                          "Der Trainer lobt die Mannschaftsleistung. "
-                          "Fans feiern den Erfolg landesweit. "
-                          "Die Partie stärkt die Chancen in der Gruppenphase. "
-                          "Ausblick bleibt positiv für kommende Spiele.",
-             "link":"https://example.org/sport/qualifikation","importance":5,"date":"2025-10-31"},
-            {"title":"Bundesligist investiert in Nachwuchsprogramm",
-             "description":"Ein Spitzenclub investiert stark in sein Nachwuchsleistungszentrum. "
-                          "Ziel ist, Talente systematisch zu entwickeln. "
-                          "Kooperationen mit Schulen und Vereinen sind Teil der Strategie. "
-                          "Trainer betonen langfristige Perspektiven. "
-                          "Erste Erfolge zeigen sich in Jugendwettbewerben.",
-             "link":"https://example.org/sport/nachwuchs","importance":3,"date":"2025-09-12"},
-            {"title":"Olympia-Vorbereitung läuft planmäßig",
-             "description":"Athleten zeigen starke Form in Vorbereitungswettkämpfen. "
-                          "Trainer optimieren Trainingszyklen. "
-                          "Verbände sind zufrieden mit der bisherigen Planung. "
-                          "Medaillenkandidaten präsentieren überzeugende Leistungen. "
-                          "Die Hoffnungen sind groß für die Spiele.",
-             "link":"https://example.org/sport/olympia","importance":4,"date":"2025-08-01"},
-            {"title":"Tennis: Überraschungssieger begeistert Publikum",
-             "description":"Ein Newcomer gewann überraschend ein großes Turnier. "
-                          "Der Erfolg bringt wichtige Ranglistenpunkte und Aufmerksamkeit. "
-                          "Trainer loben mentale Stärke und Technik. "
-                          "Sponsoren zeigen Interesse. "
-                          "Der Spieler könnte ein neuer Star werden.",
-             "link":"https://example.org/sport/tennis","importance":3,"date":"2025-07-18"},
-            {"title":"Basketball: Entscheidungsspiel sorgt für Spannung",
-             "description":"Ein Entscheidungsspiel entschied über die Playoff-Platzierung in der Bundesliga. "
-                          "Die Partie ging in die Verlängerung und bot zahlreiche Höhepunkte. "
-                          "Fans füllten die Halle bis auf den letzten Platz. "
-                          "Experten loben die taktische Tiefe der Begegnung. "
-                          "Die Playoffs versprechen weitere intensive Duelle.",
-             "link":"https://example.org/sport/basketball","importance":3,"date":"2025-06-11"},
-            {"title":"Handball: Auftaktsieg schafft Zuversicht",
-             "description":"Die Nationalmannschaft startete erfolgreich in die Saison. "
-                          "Die Defensive zeigte starke Stabilität. "
-                          "Junge Talente bekamen Einsatzzeiten. "
-                          "Trainer betont Teamchemie als Schlüssel. "
-                          "Fans freuen sich auf die kommenden Aufgaben.",
-             "link":"https://example.org/sport/handball","importance":2,"date":"2025-05-09"},
-            {"title":"Radsport: Etappensieg verändert Gesamtwertung",
-             "description":"Ein spektakulärer Antritt in der Schlussetappe brachte einem Fahrer den Etappensieg. "
-                          "Die Gesamtwertung veränderte sich dadurch signifikant. "
-                          "Teams planen taktische Antworten für die Berge. "
-                          "Die Zuschauer erlebten packende Duelle. "
-                          "Weitere Etappen versprechen Spannung.",
-             "link":"https://example.org/sport/radsport","importance":3,"date":"2025-04-22"},
-            {"title":"Leichtathletik: Nachwuchsmeeting mit Bestleistungen",
-             "description":"Bei einem Meeting erzielten junge Athleten mehrere persönliche Bestmarken. "
-                          "Trainer sehen einen positiven Trend für kommende Großereignisse. "
-                          "Sprint- und Sprungdisziplinen fielen besonders auf. "
-                          "Die Veranstaltung stärkte den Austausch zwischen Vereinen. "
-                          "Initiativen zur Talentsichtung werden ausgeweitet.",
-             "link":"https://example.org/sport/leichtathletik","importance":2,"date":"2025-03-30"},
-            {"title":"Eishockey: Überraschungsteam zieht in Playoffs ein",
-             "description":"Ein Aufsteiger erreichte überraschend die Playoffs nach starker Teamleistung. "
-                          "Fans feierten die Saison als großen Erfolg. "
-                          "Trainer lobten das kollektive Engagement. "
-                          "In den Playoffs hoffen Beobachter auf weitere Überraschungen. "
-                          "Die Clubentwicklung gilt als vorbildlich.",
-             "link":"https://example.org/sport/eishockey","importance":2,"date":"2025-02-12"},
-            {"title":"Lokalderby bringt Emotionen und volle Stadien",
-             "description":"Ein lokales Derby sorgte für volle Zuschauerränge und hohe Emotionen. "
-                          "Die Begegnung verlief intensiv und fair. "
-                          "Sicherheitskonzepte wurden erfolgreich umgesetzt. "
-                          "Organisatoren ziehen positive Bilanz. "
-                          "Die Rivalität bleibt sportlich spannend.",
-             "link":"https://example.org/sport/derby","importance":3,"date":"2025-01-18"},
+            {"title":"Nationalteam triumphiert im Qualifikationsspiel",
+             "description":"Dank taktischer Disziplin sichert sich das Team einen wichtigen Sieg. "
+                          "Trainer lobt die mannschaftliche Leistung. "
+                          "Fans feiern in vielen Städten. "
+                          "Der Erfolg stärkt die Startchancen im Turnier. "
+                          "Nächste Aufgaben sind bereits terminiert.",
+             "link":"https://example.org/sport/qualifikation", "importance":5, "date":"2025-10-31"},
+            {"title":"Nachwuchsprogramm eines Bundesligisten wird ausgebaut",
+             "description":"Ein Club investiert in seine Akademie, um Talente langfristig zu fördern. "
+                          "Kooperationen mit Schulen sollen Praxisnähe herstellen. "
+                          "Trainer setzen moderne Trainingskonzepte ein. "
+                          "Erste Erfolge zeigen sich in Jugendwettbewerben. "
+                          "Förderer unterstützen langfristig.",
+             "link":"https://example.org/sport/nachwuchs", "importance":3, "date":"2025-09-12"},
+            {"title":"Olympia-Vorbereitung: Athleten in Top-Form",
+             "description":"Vorbereitungswettkämpfe zeigen vielversprechende Leistungen. "
+                          "Trainer optimieren Formkurven für die Saison. "
+                          "Verbände sind mit dem Gesamtverlauf zufrieden. "
+                          "Medaillenkandidaten zeigen starke Ergebnisse. "
+                          "Vorfreude und Erwartungen steigen.",
+             "link":"https://example.org/sport/olympia", "importance":4, "date":"2025-08-01"},
+            {"title":"Tennis: Überraschungssieg sorgt für Aufsehen",
+             "description":"Ein Newcomer gewinnt überraschend ein großes Turnier und sorgt für Medieninteresse. "
+                          "Ranglistenpunkte verbessern seine Position deutlich. "
+                          "Trainer loben mentale Stärke. "
+                          "Sponsoren zeigen Interesse an einer Zusammenarbeit. "
+                          "Weitere Turniere stehen an.",
+             "link":"https://example.org/sport/tennis", "importance":3, "date":"2025-07-18"},
+            {"title":"Radsport: Etappensieg ändert Gesamtwertung",
+             "description":"Ein spektakulärer Antritt sorgt für einen Etappensieg und veränderte Gesamtstände. "
+                          "Teamtaktiken prägten den Rennverlauf. "
+                          "Die nächsten Berge entscheiden weiter. "
+                          "Zuschauer loben den Kampfgeist der Fahrer. "
+                          "Weitere spannende Etappen folgen.",
+             "link":"https://example.org/sport/radsport", "importance":3, "date":"2025-04-22"},
+            {"title":"Leichtathletik: Nachwuchsmeeting mit Bestleistun
+gswerten",
+             "description":"Junge Athleten erzielten persönliche Bestleistungen bei einem Meeting. "
+                          "Trainer sehen positive Trends für kommende Großevents. "
+                          "Sprint- und Sprungdisziplinen dominierten. "
+                          "Vereine berichten über gesteigerte Teilnahme. "
+                          "Talentförderprogramme werden ausgeweitet.",
+             "link":"https://example.org/sport/leichtathletik", "importance":2, "date":"2025-03-30"},
         ],
         "Technologie": [
-            {"title":"Neuer KI-Chip erhöht Energieeffizienz",
-             "description":"Ein Hersteller kündigt einen KI-Chip an, der die Rechenleistung pro Watt deutlich verbessert. "
-                          "Rechenzentren und Edge-Anwendungen sollen profitieren. "
-                          "Partnerschaften mit Cloud-Anbietern sind angekündigt. "
-                          "Tests laufen in ausgewählten Rechenzentren. "
-                          "Die Markteinführung wird für 2026 erwartet.",
-             "link":"https://example.org/tech/ki-chip","importance":5,"date":"2025-10-30"},
-            {"title":"5G-Privatnetze stärken Industrie 4.0",
-             "description":"Private 5G-Netze werden in Produktionsstätten häufiger eingesetzt. "
-                          "Echtzeitsteuerung und vernetzte Sensorik profitieren besonders. "
-                          "Regulatorische Fragen zur Frequenzvergabe bleiben Thema. "
-                          "Pilotprojekte zeigen Effizienzsteigerungen. "
-                          "Skalierung ist die nächste Herausforderung.",
-             "link":"https://example.org/tech/5g","importance":4,"date":"2025-08-20"},
-            {"title":"Quantenforschung macht Fortschritte bei Fehlerkorrektur",
-             "description":"Neue Methoden zur Fehlerkorrektur bringen die praktische Quantenverarbeitung näher. "
-                          "Forscherteams berichten über signifikante Verbesserungen. "
-                          "Industriepartner prüfen mögliche Anwendungen. "
-                          "Konkrete kommerzielle Systeme sind noch Zukunftsmusik. "
-                          "Die Forschung bleibt anspruchsvoll, aber vielversprechend.",
-             "link":"https://example.org/tech/quanten","importance":5,"date":"2025-07-09"},
-            {"title":"Open-Source-Tools vereinfachen Testautomatisierung",
-             "description":"Community-Projekte liefern modulare Tools für Entwickler und Tester. "
-                          "CI/CD-Pipelines werden dadurch flexibler und schneller. "
-                          "Contributors aus vielen Ländern tragen bei. "
-                          "Unternehmen profitieren von geringeren Time-to-Market. "
-                          "Adoption wächst besonders in Startups.",
-             "link":"https://example.org/tech/opensource","importance":3,"date":"2025-06-16"},
-            {"title":"Cloudanbieter bieten Nachhaltigkeits-Tools",
-             "description":"Neue Tools messen Workload-Emissionen und helfen bei Optimierung. "
-                          "Unternehmen verwenden die Daten für ESG-Reporting. "
-                          "Standardisierte Metriken vereinfachen Vergleiche. "
-                          "Erste Kunden berichten von Einsparungen. "
-                          "Die Branche diskutiert weitere Standards.",
-             "link":"https://example.org/tech/cloud","importance":3,"date":"2025-03-12"},
-            {"title":"Robotics: Service-Roboter in Lagerlogistik",
-             "description":"Autonome Roboter unterstützen Kommissionierung und Transporte. "
-                          "Integration in Lagerverwaltungssysteme optimiert Prozesse. "
-                          "Arbeitskräfte werden für höherwertige Tätigkeiten umgeschult. "
-                          "Pilotprojekte zeigen Zeit- und Fehlerreduktion. "
-                          "Wirtschaftliche Effekte werden gemessen.",
-             "link":"https://example.org/tech/robotics","importance":3,"date":"2025-04-18"},
-            {"title":"Bildverarbeitung verbessert medizinische Diagnostik",
-             "description":"KI-Modelle liefern verbesserte Ergebnisse bei der Analyse medizinischer Bilder. "
-                          "Ärzte nutzen Systeme als Unterstützung bei Diagnosen. "
-                          "Regulatorische Prüfungen laufen derzeit. "
-                          "Pilotprojekte in Kliniken zeigen vielversprechende Ergebnisse. "
-                          "Die Systeme sind als Assistenz gedacht, nicht als Ersatz.",
-             "link":"https://example.org/tech/med","importance":5,"date":"2025-02-25"},
-            {"title":"Edge-Computing reduziert Latenz in Anwendungen",
-             "description":"Mehr Anwendungen verlagern Verarbeitung an die Edge, um Latenz zu verringern. "
-                          "Smart-City- und Industrieanwendungen profitieren besonders. "
-                          "Heterogene Hardware ist technische Herausforderung. "
-                          "Entwickler passen Architekturen entsprechend an. "
-                          "Energieeffizienz bleibt ein wichtiges Thema.",
-             "link":"https://example.org/tech/edge","importance":3,"date":"2025-01-16"},
-            {"title":"Zero-Trust-Ansätze verbreiten sich in Unternehmen",
-             "description":"Unternehmen setzen vermehrt auf Zero-Trust-Architekturen zur Absicherung. "
-                          "Identitäts- und Rechteverwaltung stehen im Mittelpunkt. "
-                          "Migrationen sind komplex, aber bieten langfristig bessere Sicherheit. "
-                          "Beratung und Schulung sind gefragte Dienstleistungen. "
-                          "Modelle werden schrittweise eingeführt.",
-             "link":"https://example.org/tech/zero-trust","importance":4,"date":"2025-11-02"},
-            {"title":"Open-Data-Initiativen fördern Forschung und Innovation",
-             "description":"Institutionen stellen mehr Datensets offen zur Nutzung durch Forschung und Startups. "
-                          "Transparenz und Reproduzierbarkeit werden dadurch gestärkt. "
-                          "Forscherteams entwickeln neue Anwendungen auf Basis der Daten. "
-                          "Ethik und Zugangsregelungen werden parallel diskutiert. "
-                          "Die Initiativen unterstützen langfristig Innovation.",
-             "link":"https://example.org/tech/opendata","importance":3,"date":"2025-09-10"},
+            {"title":"Neuer KI-Chip kündigt Energieeffizienz an",
+             "description":"Ein Chiphersteller stellt einen energieeffizienten KI-Chip vor, der Rechenzentren entlasten soll. "
+                          "Tests laufen in Kooperation mit Rechenzentren. "
+                          "Partner prüfen Anwendungsszenarien für Edge und Cloud. "
+                          "Die Markteinführung ist für 2026 geplant. "
+                          "Forschungsteams sind beteiligt.",
+             "link":"https://example.org/tech/ki-chip", "importance":5, "date":"2025-10-30"},
+            {"title":"5G-Privatnetze ermöglichen smarte Fabriken",
+             "description":"Unternehmen bauen private 5G-Netze für Produktionsanwendungen auf. "
+                          "Echtzeitkommunikation fördert Automatisierung und Sensorik. "
+                          "Pilotprojekte melden Effizienzgewinne. "
+                          "Regulatorische Fragen werden parallel diskutiert. "
+                          "Skalierung bleibt Herausforderung.",
+             "link":"https://example.org/tech/5g", "importance":4, "date":"2025-08-20"},
+            {"title":"Quantenfehlerkorrektur verbessert Stabilität",
+             "description":"Forschungsgruppen melden Fortschritte in der Fehlerkorrektur für Quantenrechner. "
+                          "Die Stabilität von Qubits steigt, Experimente zeigen Fortschritte. "
+                          "Industriepartner prüfen konkrete Anwendungen. "
+                          "Kommerzielle Nutzung bleibt mittelfristig anspruchsvoll. "
+                          "Die Forschung bleibt vielversprechend.",
+             "link":"https://example.org/tech/quanten", "importance":5, "date":"2025-07-09"},
+            {"title":"Open-Source-Tools erleichtern Testautomatisierung",
+             "description":"Community-Projekte bieten modulare Tools zur Testautomatisierung und CI-Integration. "
+                          "Entwickler profitieren von wiederverwendbaren Workflows. "
+                          "Adoption steigt insbesondere in Startups. "
+                          "Projekte werden international getragen. "
+                          "Kollaboration stärkt Best-Practices.",
+             "link":"https://example.org/tech/opensource", "importance":3, "date":"2025-06-16"},
+            {"title":"Cloudanbieter launchen Nachhaltigkeitswerkzeuge",
+             "description":"Neue Tools unterstützen Kunden beim Messen von CO₂-Emissionen ihrer Workloads. "
+                          "ESG-Reporting wird dadurch vereinfacht. "
+                          "Kunden beginnen, Workloads effizienter zu planen. "
+                          "Standards und Messmethoden werden diskutiert. "
+                          "Einige Pilotkunden berichten Einsparungen.",
+             "link":"https://example.org/tech/cloud", "importance":3, "date":"2025-03-12"},
+            {"title":"Bildverarbeitung unterstützt medizinische Diagnostik",
+             "description":"KI-gestützte Bildverarbeitung verbessert Erkennungsraten in einigen Diagnosen. "
+                          "Ärzte nutzen die Tools als Unterstützung. "
+                          "Regulatorische Prüfungen laufen parallel. "
+                          "Pilotprojekte in Kliniken zeigen positiven Nutzen. "
+                          "Ziel ist assistierende Nutzung, nicht Ersatz.",
+             "link":"https://example.org/tech/med", "importance":5, "date":"2025-02-25"},
         ],
         "Weltweit": [
             {"title":"Internationale Klimapartnerschaften vereinbart",
-             "description":"Staaten verständigen sich auf Kooperationen zur Emissionsreduktion und Technologietransfer. "
-                          "Finanzierung für Anpassungsmaßnahmen ist ein wichtiger Bestandteil. "
-                          "Monitoring-Mechanismen sollen Fortschritt sichern. "
+             "description":"Staaten einigen sich auf Technologietransfer und Emissionsreduktion in einer Partnerschaft. "
+                          "Finanzierung für Anpassungsmaßnahmen ist vorgesehen. "
+                          "Monitoringmechanismen begleiten die Umsetzung. "
                           "Entwicklungsländer erhalten gezielte Unterstützung. "
                           "Die Initiative wird international begrüßt.",
-             "link":"https://example.org/welt/klima","importance":5,"date":"2025-10-05"},
-            {"title":"Friedensgespräche gestartet",
-             "description":"Diplomaten haben Gespräche zwischen Konfliktparteien initiiert, um eine Deeskalation zu ermöglichen. "
-                          "Humanitäre Zugänge und Gefangenenaustausch sind zentrale Punkte. "
-                          "Der Prozess gilt als fragil, aber notwendig. "
-                          "Internationale Organisationen unterstützen Vermittlungsbemühungen. "
-                          "Beobachter zeigen vorsichtigen Optimismus.",
-             "link":"https://example.org/welt/frieden","importance":5,"date":"2025-09-22"},
-            {"title":"Weltbank finanziert Infrastrukturprojekte",
-             "description":"Neue Kreditlinien unterstützen nachhaltige Infrastruktur in Entwicklungsregionen. "
-                          "Projekte umfassen Wasser, Energie und Transport. "
-                          "Umweltprüfungen begleiten die Maßnahmen. "
-                          "Transparenzkriterien sollen Vergabeverfahren sichern. "
-                          "Die Vorhaben zielen auf Beschäftigung und Wachstum ab.",
-             "link":"https://example.org/welt/weltbank","importance":4,"date":"2025-08-11"},
-            {"title":"Pandemieprävention: Impfstofflager ausgebaut",
-             "description":"Internationale Kooperationen bauen strategische Lager für Impfstoffe und medizinische Güter auf. "
-                          "Schnelle Verfügbarkeit in Krisenzeiten ist Ziel. "
-                          "Logistische Netzwerke und Kühlketten werden optimiert. "
-                          "Finanzierung erfolgt durch multilaterale Fonds. "
-                          "Regionale Kooperationen verbessern Verteilungskapazitäten.",
-             "link":"https://example.org/welt/impfstoffe","importance":4,"date":"2025-06-05"},
-            {"title":"Handel: Regionale Abkommen neu verhandelt",
-             "description":"Länder verhandeln die Modernisierung von Handelsabkommen mit Fokus auf digitale Wirtschaft. "
-                          "Zollfragen und Nachhaltigkeitsstandards werden diskutiert. "
-                          "Unternehmer erhoffen sich klarere Rahmenbedingungen. "
-                          "Verhandlungen könnten Monate dauern. "
-                          "Ergebnisse haben große wirtschaftliche Wirkung.",
-             "link":"https://example.org/welt/handel","importance":3,"date":"2025-07-01"},
-            {"title":"Humanitäre Hilfe: Konvois erreichen Krisenregion",
-             "description":"Internationale Hilfsorganisationen konnten dringend benötigte Güter in schwer erreichbare Gebiete bringen. "
-                          "Medizinische Versorgung und Lebensmittel sind nun besser verfügbar. "
-                          "Logistische Hürden wurden teilweise überwunden. "
-                          "Lokale Partner unterstützen die Verteilung. "
-                          "Weitere Hilfstransporte sind in Planung.",
-             "link":"https://example.org/welt/hilfe","importance":4,"date":"2025-04-20"},
-            {"title":"Kultureller Austausch fördert Verständigung",
-             "description":"Ein internationales Festival bündelt Künstler aus unterschiedlichen Ländern zur Förderung des Dialogs. "
-                          "Workshops und Ausstellungen stärken lokale Kooperationen. "
-                          "Programme betonen Bildungs- und Verständigungsformate. "
-                          "Besucherzahlen zeigten gegenüber dem Vorjahr Zuwächse. "
-                          "Initiativen sollen in Folgeprojekten fortgeführt werden.",
-             "link":"https://example.org/welt/kultur","importance":2,"date":"2025-03-08"},
-            {"title":"Wasserprojekte gegen Dürre gestartet",
-             "description":"Regionale Initiativen zur effizienten Wassernutzung werden umgesetzt, um Landwirtschaft zu stabilisieren. "
-                          "Techniken zur Rückgewinnung und Bewässerungsoptimierung werden getestet. "
-                          "Landwirte erhalten Schulungen für nachhaltige Methoden. "
-                          "Projekte erhalten internationale Unterstützung. "
-                          "Ziele sind langfristige Ertragsstabilisierung.",
-             "link":"https://example.org/welt/wasser","importance":3,"date":"2025-02-14"},
-            {"title":"Digitale Rechte: Internationaler Dialog",
-             "description":"Vertreter aus Politik, Zivilgesellschaft und Wirtschaft diskutierten Rechte im digitalen Raum. "
-                          "Themen sind Datenschutz, Zugang und digitale Bildung. "
-                          "Abschlusserklärungen regen nationale Umsetzungen an. "
-                          "Weitere Austauschformate sind geplant. "
-                          "Die Konferenz generierte breite Aufmerksamkeit.",
-             "link":"https://example.org/welt/digital","importance":3,"date":"2025-05-16"},
-            {"title":"Regionale Infrastrukturprogramme angekündigt",
-             "description":"Finanzierungsprogramme für lokale Infrastrukturprojekte wurden vorgestellt. "
-                          "Fokus liegt auf Straßen, Wasser und Energieprojekten. "
-                          "Zugang zu Krediten soll erleichtert werden. "
-                          "Partizipation der Gemeinden ist vorgesehen. "
-                          "Programme sollen kurzfristig Arbeitsplätze schaffen.",
-             "link":"https://example.org/welt/infrastruktur","importance":3,"date":"2025-01-30"},
+             "link":"https://example.org/welt/klima", "importance":5, "date":"2025-10-05"},
+            {"title":"Friedensgespräche in Konfliktregion gestartet",
+             "description":"Diplomatische Verhandlungen sollen die Lage entschärfen und humanitären Zugang verbessern. "
+                          "Der Prozess gilt als fragil, doch Vermittler zeigen Einsatz. "
+                          "Internationale Organisationen unterstützen den Dialog. "
+                          "Gefangenenaustausch und Hilfskorridore werden diskutiert. "
+                          "Beobachter bleiben vorsichtig optimistisch.",
+             "link":"https://example.org/welt/frieden", "importance":5, "date":"2025-09-22"},
+            {"title":"Weltbank finanziert nachhaltige Infrastrukturprojekte",
+             "description":"Neue Kredite unterstützen Wasser-, Energie- und Verkehrsprojekte in Entwicklungsregionen. "
+                          "Umweltprüfungen sind Teil der Vergabebedingungen. "
+                          "Transparenzkriterien begleiten die Auswahl. "
+                          "Projekte zielen auf Arbeitsplatzschaffung und Wachstum. "
+                          "Regionale Partnerschaften sind vorgesehen.",
+             "link":"https://example.org/welt/weltbank", "importance":4, "date":"2025-08-11"},
+            {"title":"Pandemieprävention: Impfstofflager werden ausgebaut",
+             "description":"Strategische Lager für Impfstoffe erhöhen die Reaktionsfähigkeit bei Ausbrüchen. "
+                          "Logistiknetzwerke und Kühlketten werden optimiert. "
+                          "Multilaterale Finanzierung unterstützt die Maßnahmen. "
+                          "Regionale Kooperationen verstärken Verteilungskapazitäten. "
+                          "Ziel ist schnellere Verfügbarkeit in Krisen.",
+             "link":"https://example.org/welt/impfstoffe", "importance":4, "date":"2025-06-05"},
+            {"title":"Regionale Handelsverhandlungen neu gestartet",
+             "description":"Verhandlungen zur Modernisierung von Handelsabkommen beginnen, Fokus auf digitale Wirtschaft. "
+                          "Zoll- und Nachhaltigkeitsfragen stehen auf der Agenda. "
+                          "Unternehmer hoffen auf klare Rahmenbedingungen. "
+                          "Verhandlungen dauern voraussichtlich Monate. "
+                          "Outcome könnte große wirtschaftliche Wirkung haben.",
+             "link":"https://example.org/welt/handel", "importance":3, "date":"2025-07-01"},
+            {"title":"Kultureller Austausch fördert Dialog",
+             "description":"Ein internationales Festival stärkt den Austausch von Künstlern und kulturellen Projekten. "
+                          "Workshops und Ausstellungen setzen auf lokale Teilhabe. "
+                          "Initiativen unterstützen Bildungsangebote vor Ort. "
+                          "Die Veranstaltung zieht internationale Gäste an. "
+                          "Nachhaltige Netzwerke werden aufgebaut.",
+             "link":"https://example.org/welt/kultur", "importance":2, "date":"2025-03-08"},
         ],
         "Allgemein": [
-            {"title":"Deutsche Bahn meldet bessere Pünktlichkeit",
-             "description":"Die Bahn berichtet von verbesserter Pünktlichkeit durch neue Instandhaltungspläne. "
+            {"title":"Bahn meldet verbesserte Pünktlichkeit",
+             "description":"Die Bahn berichtet von Pünktlichkeitssteigerungen nach neuen Abläufen und Wartungsplänen. "
                           "Kunden zeigen sich vorsichtig optimistisch. "
-                          "Weitere Investitionen in Infrastruktur sind geplant. "
-                          "Transparenzberichte sollen Kundeninformation verbessern. "
-                          "Langfristige Auswirkungen werden beobachtet.",
-             "link":"https://example.org/allgemein/bahn","importance":3,"date":"2025-10-01"},
-            {"title":"Stadtplanung: Grünflächen werden ausgebaut",
-             "description":"Kommunen starten neue Begrünungsprojekte zur Verbesserung des Mikroklimas. "
-                          "Bürgerbeteiligung ist Teil der Planungen. "
-                          "Fördermittel unterstützen Umsetzung und Pflege. "
-                          "Naherholungsflächen werden erweitert. "
-                          "Wissenschaftliche Begleitung sichert Qualitätskontrolle.",
-             "link":"https://example.org/allgemein/gruen","importance":2,"date":"2025-06-05"},
-            {"title":"Verbraucherschutz: Regeln für Onlinekäufe verbessert",
-             "description":"Neue Regelungen stärken Informationspflichten und Rückgaberechte bei Onlinekäufen. "
-                          "Händler müssen transparente Preisangaben bereitstellen. "
-                          "Kontrollen und Sanktionen werden verschärft. "
-                          "Ziel ist mehr Verbrauchervertrauen im E-Commerce. "
+                          "Weitere Investitionen sind geplant. "
+                          "Transparenzberichte sollen Reisende besser informieren. "
+                          "Langfristige Effekte werden beobachtet.",
+             "link":"https://example.org/allgemein/bahn", "importance":3, "date":"2025-10-01"},
+            {"title":"Kommunen investieren in Grünflächen",
+             "description":"Städte fördern neue Begrünungsprojekte zur Verbesserung des Mikroklimas und Naherholung. "
+                          "Bürgerbeteiligung wird aktiv eingebunden. "
+                          "Förderprogramme unterstützen Planung und Pflege. "
+                          "Die Maßnahmen stärken Lebensqualität in Vierteln. "
+                          "Begleitende Studien evaluieren Effekte.",
+             "link":"https://example.org/allgemein/gruen", "importance":2, "date":"2025-06-05"},
+            {"title":"Verbraucherschutz: Regeln für Onlinekäufe verschärft",
+             "description":"Informationspflichten und Rückgaberechte werden für Onlinehändler klarer geregelt. "
+                          "Ziel ist erhöhte Transparenz und weniger Abzocke im E-Commerce. "
+                          "Kontrollen werden verstärkt. "
+                          "Konsumentenrechte werden gestärkt. "
                           "Umsetzung erfolgt schrittweise.",
-             "link":"https://example.org/allgemein/verbraucher","importance":4,"date":"2025-08-01"},
-            {"title":"Bibliotheken erweitern digitale Angebote",
-             "description":"Bibliotheken bieten vermehrt digitale Lernräume und Medienwerkstätten an. "
-                          "Kooperation mit Schulen fördert Nutzungsangebote. "
-                          "Flexiblere Öffnungszeiten steigern Erreichbarkeit. "
-                          "Programme unterstützen Medienkompetenz. "
-                          "Initiativen zielen auf inklusive Bildung.",
-             "link":"https://example.org/allgemein/bibliothek","importance":2,"date":"2025-02-01"},
-            {"title":"Katastrophenschutz übt Evakuierungspläne",
-             "description":"Regionale Behörden führten umfassende Evakuierungsübungen durch. "
-                          "Szenarien reichten von Flutereignissen bis Industrieunfällen. "
-                          "Kommunikation und Routenplanung wurden erprobt. "
-                          "Erkenntnisse fließen in künftige Konzepte ein. "
-                          "Freiwillige und Rettungskräfte beteiligten sich.",
-             "link":"https://example.org/allgemein/katastrophen","importance":3,"date":"2025-01-08"},
-            {"title":"Ehrenamtsbörsen vermitteln lokale Helfer",
-             "description":"Digitale Freiwilligenbörsen vernetzen Ehrenamtliche und Projekte vor Ort. "
-                          "Plattformen unterstützen Schulungen und Versicherungsschutz. "
-                          "Senioren- und Bildungsprojekte profitieren besonders. "
-                          "Engagement stärkt Nachbarschaften. "
-                          "Modelle werden regional skaliert.",
-             "link":"https://example.org/allgemein/ehrenamt","importance":2,"date":"2025-03-22"},
-            {"title":"Regionale Impfkampagnen starten",
-             "description":"Gesundheitsämter starten mobile Impfkampagnen, um Erreichbarkeit zu erhöhen. "
-                          "Kooperation mit Apotheken und Hausärzten erleichtert Umsetzung. "
-                          "Informationskampagnen begleiten die Maßnahmen. "
-                          "Ziel ist eine höhere Impfquote in vulnerablen Gruppen. "
-                          "Logistische Unterstützung ist organisiert.",
-             "link":"https://example.org/allgemein/impfungen","importance":3,"date":"2025-04-10"},
-            {"title":"Fahrradstraßen-Pilotprojekte getestet",
-             "description":"Städte testen Fahrradstraßen mit Verkehrsberuhigung und verbesserter Infrastruktur. "
-                          "Nutzerbefragungen fließen in die Weiterentwicklung ein. "
-                          "Maßnahmen sollen nachhaltige Mobilität stärken. "
-                          "Wissenschaftliche Begleitung bewertet Effekte. "
-                          "Positive Rückmeldungen fördern Ausweitung.",
-             "link":"https://example.org/allgemein/fahrrad","importance":2,"date":"2025-05-20"},
-            {"title":"Lokale Kulturförderung stärkt Initiativen",
-             "description":"Förderprogramme unterstützen kleine Kulturprojekte und Jugendinitiativen. "
-                          "Finanzielle Mittel und Coaching werden bereitgestellt. "
-                          "Projekte tragen zur kulturellen Vielfalt vor Ort bei. "
-                          "Erfolgreiche Vorhaben werden als Modell adaptiert. "
-                          "Bewerbungen sind offen für verschiedene Träger.",
-             "link":"https://example.org/allgemein/kultur","importance":2,"date":"2025-09-09"},
-            {"title":"Car-Sharing-Tests für städtische Mobilität",
-             "description":"Pilotprojekte zu Car-Sharing werden in ausgewählten Stadtteilen getestet. "
-                          "Ziel ist Reduktion des Individualverkehrs und Emissionen. "
-                          "Datenauswertung begleitet die Tests. "
-                          "Kooperationen mit Anbietern werden geprüft. "
-                          "Erfahrungen dienen der Verkehrsplanung.",
-             "link":"https://example.org/allgemein/mobilitaet","importance":3,"date":"2025-11-03"},
+             "link":"https://example.org/allgemein/verbraucher", "importance":4, "date":"2025-08-01"},
+            {"title":"Bibliotheken bauen digitale Angebote aus",
+             "description":"Digitale Lernräume und Medienwerkstätten erweitern das Angebot der Bibliotheken. "
+                          "Kooperationen mit Schulen fördern Nutzung und Kompetenzaufbau. "
+                          "Flexiblere Öffnungszeiten erhöhen Zugänglichkeit. "
+                          "Programme fokussieren inklusive Bildung. "
+                          "Regional werden Pilotprojekte getestet.",
+             "link":"https://example.org/allgemein/bibliothek", "importance":2, "date":"2025-02-01"},
+            {"title":"Katastrophenschutz übt Evakuierungen",
+             "description":"Großangelegte Übungen für Evakuierungen testen Kommunikation und Logistik. "
+                          "Rettungskräfte und Verwaltung kooperieren eng. "
+                          "Erkenntnisse fließen in künftige Pläne ein. "
+                          "Freiwillige unterstützen Szenarien. "
+                          "Maßnahmen erhöhen Reaktionsfähigkeit.",
+             "link":"https://example.org/allgemein/katastrophen", "importance":3, "date":"2025-01-08"},
+            {"title":"Mobilität: Car-Sharing Tests gestartet",
+             "description":"Pilotprojekte für Car-Sharing sollen Städte entlasten und Emissionen senken. "
+                          "Datenanalyse begleitet die Planung. "
+                          "Kooperation mit Anbietern wird geprüft. "
+                          "Nutzerbefragungen fließen in Entscheidungen ein. "
+                          "Ergebnisse entscheiden über Ausweitung.",
+             "link":"https://example.org/allgemein/mobilitaet", "importance":3, "date":"2025-11-03"},
         ],
     }
-    return data
-# ------------------------------
-# Tokenizer, Stopwords, Sentiment Lexika (Deutsch)
-# ------------------------------
+
+# -----------------------
+# Tokenizer, Stopwords, Sentiment Lexikon (Deutsch, kompakt)
+# -----------------------
+WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿÄäÖöÜüß0-9]+", flags=re.UNICODE)
+
 GERMAN_STOPWORDS = {
     "und","oder","aber","auch","als","an","auf","bei","der","die","das","ein","eine","in","im","ist","sind",
     "mit","zu","von","den","des","für","dass","dem","nicht","vor","nach","wie","er","sie","es","wir","ihr","ich",
@@ -573,16 +368,16 @@ GERMAN_STOPWORDS = {
 
 POSITIVE_LEXICON = {
     "gut","stark","erfolgreich","verbessert","gewinnt","begrüßt","optimistisch","stabil","steigerung","gewinn",
-    "sicher","förder","förderung","unterstützt","erholen","aufwind","positive","verbesserung","win"
+    "sicher","förder","unterstützt","erholen","aufwind","positive","verbesserung","erfolg"
 }
+
 NEGATIVE_LEXICON = {
     "kritisch","warn","warnen","risiko","risiken","verlust","problem","schwier","krise","fragil","stagn","einbruch",
-    "verzöger","engpass","kritik","mangel","unsicher","verlust","sorge","problematisch"
+    "verzöger","engpass","kritik","mangel","unsicher","sorge","problematisch"
 }
 
-WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿÄäÖöÜüß0-9]+", flags=re.UNICODE)
-
 def tokenize(text):
+    text = text or ""
     tokens = [t.lower() for t in WORD_RE.findall(text)]
     tokens = [t for t in tokens if t not in GERMAN_STOPWORDS and len(t) > 2]
     return tokens
@@ -596,82 +391,71 @@ def sentiment_score_text(text):
         return 0.0
     return round((pos - neg) / total, 3)
 
-# IDF-like map (lazily computed)
-def compute_tf_idf_map(all_texts):
-    docs = [tokenize(t) for t in all_texts]
+# -----------------------
+# TF-IDF like map (lazy)
+# -----------------------
+def compute_idf_map(docs):
+    # docs: list of strings
+    doc_tokens = [set(tokenize(d)) for d in docs]
     df = Counter()
-    for tokens in docs:
-        for term in set(tokens):
+    for s in doc_tokens:
+        for term in s:
             df[term] += 1
     N = len(docs) if docs else 1
-    idf = {term: math.log((N+1)/(df_count+1)) + 1 for term, df_count in df.items()}
+    idf = {t: math.log((N + 1) / (df_n + 1)) + 1 for t, df_n in df.items()}
     return idf
 
+# -----------------------
+# Headline Scorer
+# -----------------------
 def score_headline(article, idf_map=None, important_terms=None):
-    # Score-Bestandteile:
-    # - Basis: importance (1-5) -> 10-50 Punkte
-    # - Sentiment: -8..+8 (stärkere positive Sprache erhöht Score)
-    # - Länge: ideal 6-12 Tokens -> Bonus
-    # - IDF/Keyword Boost: seltene/wichtige Tokens erhöhen Score
     score = 0.0
     importance = float(article.get("importance", 3))
-    score += importance * 10.0  # 10-50
+    score += importance * 10.0  # base 10..50
     txt = (article.get("title","") + " " + article.get("description",""))
     s = sentiment_score_text(txt)
     score += s * 8.0  # -8..+8
-
-    t_tokens = tokenize(article.get("title",""))
-    l = len(t_tokens)
-    # ideal length gets up to +8
-    opt_bonus = max(0, 8 - abs(l - 9))
+    title_tokens = tokenize(article.get("title",""))
+    l = len(title_tokens)
+    opt_bonus = max(0, 8 - abs(l - 9))  # ideal length ~9
     score += opt_bonus
-
-    # IDF boost
     if idf_map:
-        boost = 0.0
-        for w in set(t_tokens):
-            boost += idf_map.get(w, 0.0) * 2.0
-        score += boost
-
-    # important terms (manual boost)
+        for w in set(title_tokens):
+            score += idf_map.get(w, 0.0) * 2.0
     if important_terms:
         lowtxt = txt.lower()
         for it in important_terms:
             if it in lowtxt:
-                score += 4.0
-
-    # normalize and cap to 0..100
+                score += 3.0
     score = max(-100.0, min(100.0, score))
     normalized = (score + 100.0) / 2.0
     return round(normalized, 1)
 
-# ------------------------------
-# NewsAnalyzer (lazily evaluates heavy parts)
-# ------------------------------
-class NewsAnalyzer:
+# -----------------------
+# Analyzer (lazy evaluation)
+# -----------------------
+class Analyzer:
     def __init__(self, dataset):
-        self.dataset = dataset  # dict: cat -> list articles
+        self.dataset = dataset
         self._initialized = False
-        # cached structures
         self.idf_map = {}
-        self.global_top_tokens = []
-        self.category_stats = {}  # per category computed stats
+        self.global_top = []
+        self.cat_stats = {}
 
     def initialize(self):
         if self._initialized:
             return
-        # build corpus texts
         all_texts = []
         for cat, arts in self.dataset.items():
             for a in arts:
                 all_texts.append(a.get("title","") + " " + a.get("description",""))
-        self.idf_map = compute_tf_idf_map(all_texts)
-        # global token frequency
+        self.idf_map = compute_idf_map(all_texts)
+        # global top tokens
         global_counter = Counter()
-        for txt in all_texts:
-            global_counter.update(tokenize(txt))
-        self.global_top_tokens = [t for t,_ in global_counter.most_common(50)]
-        # per-category stats
+        for t in all_texts:
+            global_counter.update(tokenize(t))
+        self.global_top = [t for t,_ in global_counter.most_common(100)]
+        # per-category
         for cat, arts in self.dataset.items():
             texts = [a.get("title","") + " " + a.get("description","") for a in arts]
             tokens = []
@@ -679,8 +463,8 @@ class NewsAnalyzer:
                 tokens.extend(tokenize(t))
             freq = Counter(tokens)
             sentiments = [sentiment_score_text(t) for t in texts if t.strip()]
-            avg_sent = round(sum(sentiments)/len(sentiments),3) if sentiments else 0.0
-            avg_imp = round(sum(a.get("importance",3) for a in arts)/len(arts),3) if arts else 0.0
+            avg_sent = round(sum(sentiments)/len(sentiments), 3) if sentiments else 0.0
+            avg_imp = round(sum(a.get("importance",3) for a in arts)/len(arts), 3) if arts else 0.0
             month_counts = Counter()
             for a in arts:
                 try:
@@ -688,8 +472,8 @@ class NewsAnalyzer:
                     month_counts[dt.strftime("%Y-%m")] += 1
                 except Exception:
                     pass
-            self.category_stats[cat] = {
-                "token_freq": freq,
+            self.cat_stats[cat] = {
+                "freq": freq,
                 "top_terms": [t for t,_ in freq.most_common(20)],
                 "avg_sentiment": avg_sent,
                 "avg_importance": avg_imp,
@@ -697,105 +481,117 @@ class NewsAnalyzer:
             }
         self._initialized = True
 
-    def get_global_top_keywords(self, top_n=20):
+    def get_global_top(self, n=20):
         self.initialize()
-        return self.global_top_tokens[:top_n]
+        return self.global_top[:n]
 
-    def get_category_summary(self, category):
+    def get_cat_summary(self, cat):
         self.initialize()
-        return self.category_stats.get(category, {})
+        return self.cat_stats.get(cat, {})
 
-    def sentiment_distribution(self, category=None):
+    def sentiment_distribution(self, cat=None):
         self.initialize()
-        def cls(s):
-            if s > 0.2: return "positive"
-            if s < -0.2: return "negative"
+        def cls(x):
+            if x > 0.2: return "positive"
+            if x < -0.2: return "negative"
             return "neutral"
         buckets = Counter()
-        if category:
-            arts = self.dataset.get(category, [])
+        if cat:
+            arts = self.dataset.get(cat, [])
         else:
             arts = [a for lst in self.dataset.values() for a in lst]
         for a in arts:
-            txt = a.get("title","") + " " + a.get("description","")
-            s = sentiment_score_text(txt)
+            s = sentiment_score_text(a.get("title","") + " " + a.get("description",""))
             buckets[cls(s)] += 1
         return dict(buckets)
 
-    def top_headlines(self, category, top_n=10):
+    def top_headlines(self, cat, n=10):
         self.initialize()
-        arts = list(self.dataset.get(category, []))
-        important_terms = self.get_global_top_keywords(8)
+        arts = list(self.dataset.get(cat, []))
+        important = self.get_global_top(8)
         scored = []
         for a in arts:
-            sc = score_headline(a, idf_map=self.idf_map, important_terms=important_terms)
+            sc = score_headline(a, idf_map=self.idf_map, important_terms=important)
             scored.append((sc, a))
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [(s, art) for s, art in scored[:top_n]]
+        return [(s, art) for s, art in scored[:n]]
 
-    def trend_time_series(self, category):
+    def trend_series(self, cat):
         self.initialize()
-        stats = self.category_stats.get(category, {})
-        months = stats.get("month_counts", {})
-        return sorted(months.items(), key=lambda x: x[0])
+        return sorted(self.cat_stats.get(cat, {}).get("month_counts", {}).items())
 
-    def top_terms_per_category(self, top_n=10):
-        self.initialize()
-        return {cat: stats["top_terms"][:top_n] for cat, stats in self.category_stats.items()}
-
-# ------------------------------
-# User management (simple)
-# ------------------------------
+# -----------------------
+# User management
+# -----------------------
 class UserManager:
     def __init__(self):
         self.file = USERS_FILE
-        self.users = safe_load_json(self.file, {})
-        # users stored as: username -> {"password": "...", "created": "ISO"}
+        self.users = safe_load_json(self.file, {})  # username -> {password, created}
     def register(self, username, password):
+        if not username or not password:
+            return False, "Benutzername und Passwort dürfen nicht leer sein."
         if username in self.users:
             return False, "Benutzer existiert bereits."
         self.users[username] = {"password": password, "created": datetime.utcnow().isoformat()}
         safe_save_json(self.file, self.users)
         return True, "Registrierung erfolgreich."
     def login(self, username, password):
-        u = self.users.get(username)
-        if not u:
+        if username not in self.users:
             return False, "Benutzer nicht gefunden."
-        if u.get("password") != password:
+        if self.users[username].get("password") != password:
             return False, "Falsches Passwort."
         return True, "Login erfolgreich."
 
-# ------------------------------
-# CLI (sauber, schnell, responsiv)
-# ------------------------------
+# -----------------------
+# CLI (clean, fast, lazy)
+# -----------------------
 class CLI:
     def __init__(self):
-        print("Starte Lumina News (Offline) ...")
-        # Build dataset quickly
-        self.news = build_news_dataset()
-        # Analyzer created but heavy init is lazy
-        self.analyzer = NewsAnalyzer(self.news)
+        self.dataset = build_news_dataset()
+        self.analyzer = Analyzer(self.dataset)  # lazy
         self.user_mgr = UserManager()
         self.settings = safe_load_json(SETTINGS_FILE, {"sort_mode":"neueste"})
         self.current_user = None
 
-    def run(self):
-        # Welcome (immediately sichtbar)
-        print("\n🌐 Willkommen bei Lumina News (Offline)")
-        # Authentication loop
+    def start_banner(self):
+        print("="*50)
+        print("🌟 Lumina News (Offline) — Schnellstart")
+        print("1) Start")
+        print("2) Beenden")
+        print("="*50)
         while True:
-            print("\nBitte wählen:")
+            c = input("Auswahl: ").strip()
+            if c == "1":
+                return True
+            if c == "2":
+                print("Beende...")
+                sys.exit(0)
+            print("Bitte 1 oder 2 eingeben.")
+
+    def run(self):
+        # Banner
+        self.start_banner()
+        # Authentication
+        while True:
+            print("\n--- Anmeldung ---")
             print("1) Login")
             print("2) Registrierung")
             print("3) Als Gast fortfahren")
             print("0) Beenden")
             choice = input("Auswahl: ").strip()
             if choice == "1":
-                self._login()
-                if self.current_user:
+                u = input("Benutzername: ").strip()
+                p = input("Passwort: ").strip()
+                ok, msg = self.user_mgr.login(u, p)
+                print(msg)
+                if ok:
+                    self.current_user = u
                     break
             elif choice == "2":
-                self._register()
+                u = input("Gewünschter Benutzername: ").strip()
+                p = input("Passwort: ").strip()
+                ok, msg = self.user_mgr.register(u, p)
+                print(msg)
             elif choice == "3":
                 self.current_user = "Gast"
                 break
@@ -803,62 +599,63 @@ class CLI:
                 print("Auf Wiedersehen.")
                 sys.exit(0)
             else:
-                print("Ungültige Auswahl. Bitte 0-3 eingeben.")
+                print("Ungültig.")
 
-        # Main interactive menu
-        self._main_menu()
+        # Main loop
+        try:
+            self.main_loop()
+        finally:
+            # On exit, compute a short global summary (lazy init)
+            print("\n--- Abschlussbericht (Kurz) ---")
+            self.analyzer.initialize()
+            top = self.analyzer.get_global_top(10)
+            sentiment = self.analyzer.sentiment_distribution()
+            # simple summary heuristics
+            dominant = max(sentiment.items(), key=lambda x: x[1])[0] if sentiment else "neutral"
+            print(f"Top-Themen (Stichwörter): {', '.join(top[:8])}")
+            print(f"Sentiment-Verteilung (global): {sentiment}")
+            print(f"Dominante Stimmung: {dominant}")
+            print("Danke für die Nutzung von Lumina News. Bis bald!")
 
-    def _login(self):
-        u = input("Benutzername: ").strip()
-        p = input("Passwort: ").strip()
-        ok, msg = self.user_mgr.login(u, p)
-        print(msg)
-        if ok:
-            self.current_user = u
-
-    def _register(self):
-        u = input("Gewünschter Benutzername: ").strip()
-        if not u:
-            print("Benutzername darf nicht leer sein.")
-            return
-        p = input("Passwort: ").strip()
-        ok, msg = self.user_mgr.register(u, p)
-        print(msg)
-
-    def _main_menu(self):
+    def main_loop(self):
         while True:
-            print(f"\n--- Hauptmenü (Angemeldet als: {self.current_user}) ---")
-            print("1-7) Kategorie anzeigen (1=Powi, 2=Wirtschaft, 3=Politik, 4=Sport, 5=Technologie, 6=Weltweit, 7=Allgemein)")
+            print(f"\n--- Hauptmenü (angemeldet: {self.current_user}) ---")
+            print("1) Powi")
+            print("2) Wirtschaft")
+            print("3) Politik")
+            print("4) Sport")
+            print("5) Technologie")
+            print("6) Weltweit")
+            print("7) Allgemein")
             print("8) Analyzer / Trends")
-            print("9) Suche (Titel/Beschreibung)")
+            print("9) Suche")
             print("10) Export Kategorie -> JSON")
-            print("11) Einstellungen (Sortierung)")
+            print("11) Einstellungen")
             print("0) Abmelden & Beenden")
-            choice = input("Auswahl: ").strip()
-            if choice in [str(i) for i in range(1,8)]:
-                cats = list(self.news.keys())
-                cat = cats[int(choice)-1]
-                self._show_category(cat)
-            elif choice == "8":
-                self._analyzer_menu()
-            elif choice == "9":
-                self._search()
-            elif choice == "10":
-                self._export_category()
-            elif choice == "11":
-                self._settings()
-            elif choice == "0":
-                print("Abmelden. Auf Wiedersehen.")
-                sys.exit(0)
+            cmd = input("Auswahl: ").strip()
+            if cmd in [str(i) for i in range(1,8)]:
+                cats = list(self.dataset.keys())
+                cat = cats[int(cmd)-1]
+                self.show_category(cat)
+            elif cmd == "8":
+                self.analyzer_menu()
+            elif cmd == "9":
+                self.search_menu()
+            elif cmd == "10":
+                self.export_category()
+            elif cmd == "11":
+                self.settings_menu()
+            elif cmd == "0":
+                print("Abmelden...")
+                break
             else:
                 print("Ungültige Eingabe.")
 
-    def _show_category(self, category):
-        arts = list(self.news.get(category, []))
-        # Sort
+    def show_category(self, category):
+        arts = list(self.dataset.get(category, []))
         sort_mode = self.settings.get("sort_mode", "neueste")
         if sort_mode in ("wichtig","importance"):
-            arts.sort(key=lambda x: x.get("importance",0), reverse=True)
+            arts.sort(key=lambda x: x.get("importance", 0), reverse=True)
         else:
             def pd(a):
                 try:
@@ -866,7 +663,6 @@ class CLI:
                 except Exception:
                     return datetime(1970,1,1)
             arts.sort(key=lambda x: pd(x), reverse=True)
-        # Paging
         page_size = 5
         page = 0
         total_pages = max(1, math.ceil(len(arts)/page_size))
@@ -874,10 +670,9 @@ class CLI:
             start = page*page_size
             end = start + page_size
             print(f"\n--- {category} (Seite {page+1}/{total_pages}) ---")
-            slice_ = arts[start:end]
-            for idx, a in enumerate(slice_, start=1):
-                print(f"{idx}) {a['title']}  [{a['date']}]  W:{a['importance']}")
-            print("\nBefehle: n=next, p=prev, v#=view (z.B. v2), t=headlines, b=back")
+            for i, a in enumerate(arts[start:end], start=1):
+                print(f"{i}) {a['title']}  [{a['date']}]  W:{a['importance']}")
+            print("Befehle: n=next, p=prev, v#=view z.B. v2, t=headlines, b=back")
             cmd = input("Befehl: ").strip().lower()
             if cmd == "n":
                 if page+1 < total_pages:
@@ -891,72 +686,66 @@ class CLI:
                     print("Erste Seite.")
             elif cmd.startswith("v"):
                 try:
-                    num = int(cmd[1:]) - 1
-                    idx = start + num
-                    if idx < 0 or idx >= len(arts):
-                        print("Ungültige Nummer.")
-                        continue
-                    self._view_article(arts[idx])
+                    idx = int(cmd[1:]) - 1
+                    art = arts[start + idx]
+                    self.view_article(art)
                 except Exception:
-                    print("Ungültiges Format. Beispiel: 'v2' um Artikel 2 zu öffnen.")
+                    print("Ungültige Auswahl. Beispiel: 'v2'")
             elif cmd == "t":
-                tops = self.analyzer.top_headlines(category, top_n=10)
-                print(f"\nTop Headlines ({category}):")
-                for r, (score, art) in enumerate([(s,a) for s,a in tops], start=1):
+                # show top headlines via analyzer (lazy)
+                tops = self.analyzer.top_headlines(category, n=10)
+                print(f"\nTop Headlines in {category}:")
+                for r, (score, art) in enumerate(tops, start=1):
                     print(f"{r}. [{score}] {art['title']} ({art['date']}) W:{art['importance']}")
-                input("Enter zum Weitermachen.")
+                input("Enter zum Zurück.")
             elif cmd == "b":
                 return
             else:
                 print("Unbekannter Befehl.")
 
-    def _view_article(self, article):
-        print("\n--- Artikel Ansicht ---")
+    def view_article(self, article):
+        print("\n--- Artikel ---")
         print(f"Titel: {article.get('title')}")
         print(f"Datum: {article.get('date')}  |  Wichtigkeit: {article.get('importance')}")
-        print(f"Link: {article.get('link')}")
-        print("\nBeschreibung:\n" + article.get("description"))
-        # On-the-fly Analysen
-        s = sentiment_score_text(article.get("title","") + " " + article.get("description",""))
+        print(f"Link: {article.get('link')}\n")
+        print(article.get('description'))
+        # On demand analysis (fast)
+        s = sentiment_score_text(article.get('title','') + " " + article.get('description',''))
         print(f"\n[Analyse] Sentiment-Score (Proxy): {s}")
-        # Headline score (lazy uses analyzer idf map)
-        # Ensure analyzer initialized
+        # headline score (needs analyzer.initialize for idf)
         self.analyzer.initialize()
-        hs = score_headline(article, idf_map=self.analyzer.idf_map, important_terms=self.analyzer.get_global_top_keywords(8))
+        hs = score_headline(article, idf_map=self.analyzer.idf_map, important_terms=self.analyzer.get_global_top(8))
         print(f"[Analyse] Headline-Score: {hs}/100")
-        input("Enter zum Zurückkehren.")
+        input("Enter zum Zurück.")
 
-    def _analyzer_menu(self):
+    def analyzer_menu(self):
         while True:
             print("\n--- Analyzer / Trends ---")
             print("1) Globale Top-Keywords")
             print("2) Top-Terme pro Kategorie")
             print("3) Kategorie-Summaries")
-            print("4) Sentiment-Verteilung (global oder spezifisch)")
-            print("5) Trend-Zeitreihe (Kategorie)")
+            print("4) Sentiment-Verteilung (global oder Kategorie)")
+            print("5) Trend Zeitreihe (Kategorie)")
             print("0) Zurück")
             c = input("Auswahl: ").strip()
             if c == "1":
                 print("Globale Top-Keywords:")
-                print(", ".join(self.analyzer.get_global_top_keywords(30)))
+                print(", ".join(self.analyzer.get_global_top(30)))
             elif c == "2":
-                dd = self.analyzer.top_terms_per_category(10)
-                for cat, terms in dd.items():
-                    print(f"\n{cat}: {', '.join(terms)}")
+                for cat in self.dataset.keys():
+                    s = self.analyzer.get_cat_summary(cat)
+                    print(f"\n{cat}: {', '.join(s.get('top_terms',[])[:10])}")
             elif c == "3":
-                for cat in self.news.keys():
-                    s = self.analyzer.get_category_summary(cat)
-                    print(f"\n{cat}: AvgSent={s.get('avg_sentiment')} | AvgImp={s.get('avg_importance')} | TopTerms={', '.join(s.get('top_terms',[])[:8])}")
+                for cat in self.dataset.keys():
+                    s = self.analyzer.get_cat_summary(cat)
+                    print(f"\n{cat}: AvgSent={s.get('avg_sentiment')} | AvgImp={s.get('avg_importance')}")
             elif c == "4":
-                cat = input("Kategorie (leer für global): ").strip()
+                cat = input("Kategorie (leer=global): ").strip()
                 res = self.analyzer.sentiment_distribution(cat if cat else None)
                 print("Sentiment-Verteilung:", res)
             elif c == "5":
                 cat = input("Kategorie (Name): ").strip()
-                if not cat:
-                    print("Ungültig.")
-                    continue
-                ts = self.analyzer.trend_time_series(cat)
+                ts = self.analyzer.trend_series(cat)
                 if not ts:
                     print("Keine Zeitdaten.")
                 else:
@@ -967,13 +756,13 @@ class CLI:
             else:
                 print("Ungültig.")
 
-    def _search(self):
-        q = input("Suchbegriff (Titel oder Beschreibung): ").strip().lower()
+    def search_menu(self):
+        q = input("Suchbegriff (Titel/Beschreibung): ").strip().lower()
         if not q:
             print("Leere Suche.")
             return
         hits = []
-        for cat, arts in self.news.items():
+        for cat, arts in self.dataset.items():
             for a in arts:
                 if q in a.get("title","").lower() or q in a.get("description","").lower():
                     hits.append((cat, a))
@@ -983,20 +772,20 @@ class CLI:
         print(f"{len(hits)} Treffer:")
         for i, (cat, a) in enumerate(hits, start=1):
             print(f"{i}) [{cat}] {a['title']} ({a['date']}) W:{a['importance']}")
-        sel = input("Artikelnummer öffnen (Enter = Abbrechen): ").strip()
+        sel = input("Nummer öffnen (Enter=Abbrechen): ").strip()
         if sel:
             try:
-                idx = int(sel)-1
+                idx = int(sel) - 1
                 if 0 <= idx < len(hits):
-                    self._view_article(hits[idx][1])
+                    self.view_article(hits[idx][1])
             except Exception:
-                print("Ungültige Eingabe.")
+                print("Ungültig.")
 
-    def _export_category(self):
-        cats = list(self.news.keys())
+    def export_category(self):
+        cats = list(self.dataset.keys())
         for i, c in enumerate(cats, start=1):
             print(f"{i}) {c}")
-        sel = input("Kategorie wählen (Nummer) oder 0 abbrechen: ").strip()
+        sel = input("Kategorie (Nummer) oder 0 abbrechen: ").strip()
         if sel == "0" or not sel:
             return
         try:
@@ -1005,15 +794,14 @@ class CLI:
                 print("Ungültig.")
                 return
             cat = cats[idx]
-            fname = f"export_{cat.replace(' ','_')}.json"
-            safe_save_json(fname, self.news[cat])
-            print(f"Export erfolgreich: {fname}")
+            fname = f"export_{cat.replace(' ', '_')}.json"
+            safe_save_json(fname, self.dataset[cat])
+            print(f"Exportiert: {fname}")
         except Exception as e:
-            print("Fehler beim Export:", e)
+            print("Fehler:", e)
 
-    def _settings(self):
-        print("\n--- Einstellungen ---")
-        cur = self.settings.get("sort_mode","neueste")
+    def settings_menu(self):
+        cur = self.settings.get("sort_mode", "neueste")
         print(f"Aktuelle Sortierung: {cur} (Optionen: neueste / wichtig)")
         new = input("Neue Sortierung (leer = behalten): ").strip().lower()
         if not new:
@@ -1028,13 +816,12 @@ class CLI:
         else:
             print("Ungültige Option.")
 
-# ------------------------------
-# Start
-# ------------------------------
+# -----------------------
+# Startpunkt
+# -----------------------
 def main():
     cli = CLI()
     cli.run()
 
 if __name__ == "__main__":
     main()
-             
