@@ -1,114 +1,124 @@
 # -*- coding: utf-8 -*-
 """
-Lumina News v2.7 - Offline Streamlit Edition mit Demo-News
+Lumina News v3.0 - Streamlit Echtzeit & Offline Edition
+Features:
+ - Login / Registrierung
+ - Theme (hell/dunkel) Umschaltbar
+ - Home mit Top-News & personalisiertem Feed
+ - Kategorien, Favoriten, Suche
+ - Echtzeit-News via NewsAPI (API Key bereits integriert)
+ - Offline Cache für schnelle Ladezeiten
+ - Analyzer: Sentiment, Schlagzeilen-Score, Top-Wörter
 """
+
 import streamlit as st
-import json
-import os
-import re
+import json, os, requests, re
+from datetime import datetime
 from collections import Counter
 
 # ----------------------------
-# File paths
+# Config / Files / API
 # ----------------------------
+API_KEY = "64457577c9a14eb9a846b69dcae0d659"
+NEWS_FILE = "news_today.json"
 USERS_FILE = "users.json"
 FAV_FILE = "favorites.json"
 SETTINGS_FILE = "settings.json"
 
 # ----------------------------
-# JSON helpers
+# Helper functions
 # ----------------------------
 def safe_load(path, default):
     try:
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path,"r",encoding="utf-8") as f:
                 return json.load(f)
-    except:
-        pass
+    except: pass
     return default
 
-def safe_save(path, data):
+def safe_save(path,data):
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with open(path,"w",encoding="utf-8") as f:
+            json.dump(data,f,ensure_ascii=False,indent=2)
     except Exception as e:
-        st.error(f"Fehler beim Speichern von {path}: {e}")
+        st.error(f"Fehler beim Speichern {path}: {e}")
 
 # ----------------------------
-# Init persistent files
+# Initialize persistent files
 # ----------------------------
 if not os.path.exists(USERS_FILE):
-    safe_save(USERS_FILE, {"admin": "1234"})
+    safe_save(USERS_FILE,{"admin":"1234"})
+
 if not os.path.exists(FAV_FILE):
-    safe_save(FAV_FILE, {})
+    safe_save(FAV_FILE,{})
+
 if not os.path.exists(SETTINGS_FILE):
-    safe_save(SETTINGS_FILE, {"theme": "light", "home_count_each": 2})
+    safe_save(SETTINGS_FILE,{"theme":"light","home_count_each":2})
 
-USERS = safe_load(USERS_FILE, {"admin": "1234"})
-FAVORITES = safe_load(FAV_FILE, {})
-SETTINGS = safe_load(SETTINGS_FILE, {"theme": "light", "home_count_each": 2})
-
-# ----------------------------
-# Offline News DB - Demo Nachrichten
-# ----------------------------
-NEWS_DB = {
-    "Powi": [
-        {"id":"powi1","title":"Neue Bildungsinitiative gestartet","desc":"Bundesweit starten Programme für Medienkompetenz in Schulen.","date":"2025-11-01","importance":5},
-        {"id":"powi2","title":"Schulsozialarbeit gestärkt","desc":"Mehr Ressourcen für psychosoziale Unterstützung in Bildungseinrichtungen.","date":"2025-10-15","importance":4},
-    ],
-    "Wirtschaft": [
-        {"id":"wi1","title":"Startups boomen in der Region","desc":"Innovative Projekte erhalten Förderungen und Investitionen.","date":"2025-10-20","importance":4},
-        {"id":"wi2","title":"Exportbranche wächst","desc":"Unternehmen berichten von steigender Nachfrage im Ausland.","date":"2025-09-30","importance":3},
-    ],
-    "Politik": [
-        {"id":"po1","title":"Koalitionsgespräche erfolgreich","desc":"Parteien einigen sich auf neue Klimaziele.","date":"2025-11-02","importance":5},
-        {"id":"po2","title":"Transparenzgesetz in Diskussion","desc":"Neue Regeln für Lobbykontakte sollen verabschiedet werden.","date":"2025-10-25","importance":4},
-    ],
-    "Sport": [
-        {"id":"sp1","title":"Nationalteam gewinnt Qualifikation","desc":"Ein spannendes Spiel endet mit knapper Führung.","date":"2025-10-31","importance":5},
-        {"id":"sp2","title":"Bundesligist investiert in Nachwuchs","desc":"Akademieprogramme werden ausgebaut und modernisiert.","date":"2025-09-12","importance":3},
-    ],
-    "Technologie": [
-        {"id":"te1","title":"Neuer KI-Chip vorgestellt","desc":"Effizienzsteigerung für Cloud- und Edge-Anwendungen.","date":"2025-10-30","importance":5},
-        {"id":"te2","title":"5G Privatnetze für Industrie","desc":"Schnelle und sichere Produktionsanwendungen werden möglich.","date":"2025-08-20","importance":4},
-    ],
-    "Weltweit": [
-        {"id":"we1","title":"Gipfeltreffen zu Klimazielen","desc":"Internationale Staaten vereinbaren Maßnahmen gegen Emissionen.","date":"2025-10-05","importance":5},
-        {"id":"we2","title":"Friedensgespräche beginnen","desc":"Diplomaten initiieren Gespräche für Deeskalation in Krisengebieten.","date":"2025-09-22","importance":4},
-    ],
-    "Allgemein": [
-        {"id":"al1","title":"Bahn verbessert Pünktlichkeit","desc":"Wartungszyklen führen zu leicht besseren Werten bei Zügen.","date":"2025-10-01","importance":3},
-        {"id":"al2","title":"Grünflächen in Städten erweitert","desc":"Kommunen investieren in Parks und städtische Begrünung.","date":"2025-09-15","importance":2},
-    ],
-}
-
-CATEGORIES = list(NEWS_DB.keys())
+USERS = safe_load(USERS_FILE,{"admin":"1234"})
+FAVORITES = safe_load(FAV_FILE,{})
+GLOBAL_SETTINGS = safe_load(SETTINGS_FILE,{"theme":"light","home_count_each":2})
 
 # ----------------------------
-# Text Analyzer
+# News Fetch & Cache
+# ----------------------------
+def fetch_news():
+    url = "https://newsapi.org/v2/top-headlines"
+    params = {"language":"de","pageSize":50,"apiKey":API_KEY}
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json()
+        articles = data.get("articles",[])
+        # Simplify article fields
+        news_list = []
+        for idx,a in enumerate(articles):
+            news_list.append({
+                "id": f"api-{idx}",
+                "title": a.get("title",""),
+                "desc": a.get("description","") or "",
+                "url": a.get("url",""),
+                "date": a.get("publishedAt","")[:10],
+                "importance": 3
+            })
+        safe_save(NEWS_FILE,news_list)
+        return news_list
+    except Exception as e:
+        st.warning(f"NewsAPI nicht erreichbar. Offline Cache wird verwendet. ({e})")
+        return safe_load(NEWS_FILE,[])
+
+NEWS_DB = fetch_news()
+CATEGORIES = ["Home","Politik","Wirtschaft","Sport","Technologie","Weltweit","Allgemein"]
+
+# ----------------------------
+# Text Analysis
 # ----------------------------
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿÄäÖöÜüß0-9]+", flags=re.UNICODE)
-STOPWORDS = set(["und","der","die","das","ein","eine","in","im","zu","von","mit","für","auf","ist","sind","wie","als","auch","an","bei","hat","haben","wird","werden","nicht","oder","aber","wir","ich","du","er","sie","es","dem","den","des"])
+STOPWORDS = set(["und","der","die","das","ein","eine","in","im","zu","von","mit","für","auf","ist","sind","wie","als","auch","an","bei",
+    "hat","haben","wird","werden","nicht","oder","aber","wir","ich","du","er","sie","es","dem","den","des"])
 
 def tokenize(text):
-    return [t.lower() for t in WORD_RE.findall(text) if t.lower() not in STOPWORDS and len(t)>2]
+    tokens = [t.lower() for t in WORD_RE.findall(text)]
+    return [t for t in tokens if t not in STOPWORDS and len(t)>2]
 
-def extractive_summary(text,max_sentences=2):
-    sentences=re.split(r'(?<=[.!?])\s+',text.strip())
-    tokens=tokenize(text)
-    freq=Counter(tokens)
-    scored=[]
-    for s in sentences: scored.append((sum(freq.get(w,0) for w in tokenize(s)),s))
+def extractive_summary(text, max_sentences=2):
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    if not sentences: return ""
+    tokens = tokenize(text)
+    freq = Counter(tokens)
+    scored = []
+    for s in sentences:
+        s_tokens = tokenize(s)
+        score = sum(freq.get(w,0) for w in s_tokens)
+        scored.append((score,s))
     scored.sort(key=lambda x:x[0],reverse=True)
     return " ".join([s for _,s in scored[:max_sentences]])
 
 def sentiment_score(text):
-    pos=neg=0
-    t=text.lower()
-    POS=["erfolgreich","gewinnt","stark","besser","stabil","positiv","lob","begeistert","sieg","förder"]
-    NEG=["krise","verlust","scheit","problem","kritik","sorgen","unsicher","verzöger","einbruch","attack"]
-    for p in POS: pos+=t.count(p)
-    for n in NEG: neg+=t.count(n)
+    pos_words = ["erfolgreich","gewinnt","stark","besser","stabil","positiv","lob","begeistert","sieg","förder"]
+    neg_words = ["krise","verlust","scheit","problem","kritik","sorgen","unsicher","verzöger","einbruch","attack"]
+    t = text.lower()
+    pos = sum(t.count(w) for w in pos_words)
+    neg = sum(t.count(w) for w in neg_words)
     if pos+neg==0: return 0.0
     return round((pos-neg)/(pos+neg),3)
 
@@ -118,205 +128,180 @@ def classify_sentiment_label(score):
     return "Neutral"
 
 def headline_score(article):
-    base=article.get("importance",3)*15
-    s=sentiment_score(article.get("title","")+" "+article.get("desc",""))
-    base+=s*10
-    l=len(tokenize(article.get("title","")))
-    base+=max(0,8-abs(l-10))
+    base = article.get("importance",3)*15
+    txt = (article.get("title","")+" "+article.get("desc",""))
+    base += sentiment_score(txt)*10
+    l = len(tokenize(article.get("title","")))
+    base += max(0,8-abs(l-10))
     return int(max(0,min(100,base)))
 
 # ----------------------------
 # Favorites
 # ----------------------------
-def add_favorite(user,aid):
-    favs=FAVORITES.get(user,[])
-    if aid not in favs: favs.append(aid)
+def add_favorite(user, article_id):
+    favs = FAVORITES.get(user,[])
+    if article_id not in favs: favs.append(article_id)
     FAVORITES[user]=favs
     safe_save(FAV_FILE,FAVORITES)
 
-def remove_favorite(user,aid):
-    favs=FAVORITES.get(user,[])
-    if aid in favs: favs.remove(aid)
+def remove_favorite(user, article_id):
+    favs = FAVORITES.get(user,[])
+    if article_id in favs: favs.remove(article_id)
     FAVORITES[user]=favs
     safe_save(FAV_FILE,FAVORITES)
 
 def user_favorites(user):
     return FAVORITES.get(user,[])
 
-def user_profile_stats(user):
-    favs=user_favorites(user)
-    cat_counter=Counter()
-    for fid in favs:
-        for cat,lst in NEWS_DB.items():
-            for a in lst:
-                if a.get("id")==fid: cat_counter[cat]+=1
-    return {"favorites_total":len(favs),"fav_by_category":dict(cat_counter)}
+# ----------------------------
+# Streamlit UI
+# ----------------------------
+st.set_page_config(page_title="Lumina News v3.0", layout="wide")
 
-# ----------------------------
-# Streamlit Config
-# ----------------------------
-st.set_page_config(page_title="Lumina News v2.7", layout="wide")
 if "username" not in st.session_state: st.session_state.username=""
 if "logged_in" not in st.session_state: st.session_state.logged_in=False
-if "theme" not in st.session_state: st.session_state.theme=SETTINGS.get("theme","light")
-if "last_read" not in st.session_state: st.session_state.last_read=[]
+if "theme" not in st.session_state: st.session_state.theme=GLOBAL_SETTINGS.get("theme","light")
 
-# ----------------------------
-# Themes & CSS
-# ----------------------------
-THEMES={
-    "light":{"bg":"#f7f9fc","text":"#0b1a2b","card":"white","header":"#004aad"},
-    "dark":{"bg":"#0b1220","text":"#e6eef8","card":"#0f1724","header":"#66b2ff"},
-    "neon":{"bg":"#0b0c1a","text":"#fff","card":"#1a0033","header":"#ff00ff"},
-}
-
+# Theme
+LIGHT_CSS = """
+body{background-color:#f7f9fc;color:#0b1a2b;}
+.card{background:white;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 6px rgba(10,20,40,0.08);}
+.header{color:#004aad;}
+.small{color:#666;font-size:12px;}
+"""
+DARK_CSS = """
+body{background-color:#0b1220;color:#e6eef8;}
+.card{background:#0f1724;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 10px rgba(0,0,0,0.5);}
+.header{color:#66b2ff;}
+.small{color:#9fb7d9;font-size:12px;}
+"""
 def inject_css():
-    t=THEMES.get(st.session_state.theme,THEMES["light"])
-    css=f"""
-    body{{background-color:{t['bg']};color:{t['text']};}}
-    .card{{background:{t['card']};border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 0 15px rgba(0,0,0,0.4);transition:0.3s;}}
-    .card:hover{{box-shadow:0 0 25px rgba(255,0,255,0.7);transform:scale(1.02);}}
-    .header{{color:{t['header']};font-size:28px;font-weight:bold;}}
-    .small{{color:#aaa;font-size:12px;}}
-    .banner{{font-size:36px;font-weight:bold;color:#ff00ff;text-shadow:0 0 10px #ff00ff,0 0 20px #ff00ff;overflow-x:auto;white-space:nowrap;}}
-    """
-    st.markdown(f"<style>{css}</style>",unsafe_allow_html=True)
-
+    st.markdown(f"<style>{LIGHT_CSS if st.session_state.theme=='light' else DARK_CSS}</style>",unsafe_allow_html=True)
 inject_css()
 
-# ----------------------------
+# Topbar
+col1,col2 = st.columns([3,1])
+with col1:
+    st.markdown("<h1 class='header'>🌐 Lumina News v3.0</h1>",unsafe_allow_html=True)
+with col2:
+    theme_choice = st.selectbox("Theme",["light","dark"],index=0 if st.session_state.theme=="light" else 1)
+    if theme_choice != st.session_state.theme:
+        st.session_state.theme=theme_choice
+        GLOBAL_SETTINGS["theme"]=theme_choice
+        safe_save(SETTINGS_FILE,GLOBAL_SETTINGS)
+        inject_css()
+
+st.markdown("---")
+
 # Authentication
-# ----------------------------
 if not st.session_state.logged_in:
-    col1,col2=st.columns(2)
-    with col1:
-        st.subheader("🔐 Login")
-        with st.form("login_form"):
-            uname=st.text_input("Benutzername",key="login_user")
-            pwd=st.text_input("Passwort",type="password",key="login_pass")
+    lcol,rcol = st.columns(2)
+    with lcol:
+        st.subheader("🔐 Anmelden")
+        with st.form("login"):
+            uname = st.text_input("Benutzername")
+            pwd = st.text_input("Passwort",type="password")
             if st.form_submit_button("Einloggen"):
-                users=safe_load(USERS_FILE,{"admin":"1234"})
-                if users.get(uname)==pwd:
+                if USERS.get(uname)==pwd:
                     st.session_state.logged_in=True
                     st.session_state.username=uname
-                    st.success(f"Willkommen {uname}!")
-                else: st.error("Falsche Zugangsdaten.")
-    with col2:
-        st.subheader("🆕 Registrierung")
-        with st.form("reg_form"):
-            r_uname=st.text_input("Neuer Benutzername",key="reg_user")
-            r_pwd=st.text_input("Passwort",type="password",key="reg_pass")
-            if st.form_submit_button("Registrieren"):
-                users=safe_load(USERS_FILE,{"admin":"1234"})
-                if not r_uname or not r_pwd: st.warning("Benutzername & Passwort eingeben.")
-                elif r_uname in users: st.warning("Benutzer existiert bereits.")
+                    st.success(f"Willkommen {uname}")
                 else:
-                    users[r_uname]=r_pwd
-                    safe_save(USERS_FILE,users)
+                    st.error("Falsche Zugangsdaten")
+    with rcol:
+        st.subheader("🆕 Registrieren")
+        with st.form("register"):
+            r_uname = st.text_input("Neuer Benutzername")
+            r_pwd = st.text_input("Neues Passwort",type="password")
+            if st.form_submit_button("Registrieren"):
+                if not r_uname or not r_pwd:
+                    st.warning("Benutzername + Passwort angeben")
+                elif r_uname in USERS:
+                    st.warning("Benutzer existiert bereits")
+                else:
+                    USERS[r_uname]=r_pwd
+                    safe_save(USERS_FILE,USERS)
                     st.success("Registrierung erfolgreich! Bitte anmelden.")
     st.stop()
 
-username=st.session_state.username
+username = st.session_state.username
 
-# ----------------------------
-# Sidebar Navigation
-# ----------------------------
+# Sidebar
 st.sidebar.title(f"👤 {username}")
-pages=["🏠 Home","🔎 Suche","📚 Kategorien","⭐ Favoriten","⚙️ Einstellungen"]
-page=st.sidebar.radio("Navigation",pages)
+pages = ["🏠 Home","📚 Kategorien","🔎 Suche","📊 Analyse","⭐ Favoriten"]
+page = st.sidebar.radio("Navigation",pages)
 
-# ----------------------------
-# Helper: render news
-# ----------------------------
-def render_news_card(article,category):
-    aid=article.get("id")
-    favs=user_favorites(username)
-    is_fav=aid in favs
-    s_score=sentiment_score(article.get("desc",""))
-    s_label=classify_sentiment_label(s_score)
-    summary=extractive_summary(article.get("desc",""))
-    st.markdown(f"<div class='card'>**{article['title']}** <span class='small'>{article['date']} • Kategorie: {category} • Wichtigkeit: {article['importance']} • Sentiment: {s_label}</span>",unsafe_allow_html=True)
-    st.markdown(f"{summary}",unsafe_allow_html=True)
+# Helper: render news card
+def render_news_card(article):
+    aid = article.get("id")
+    st.markdown(f"<div class='card'>",unsafe_allow_html=True)
+    st.markdown(f"**{article.get('title','')}**  <span class='small'>{article.get('date','')} • Score: {headline_score(article)}</span>")
+    st.markdown(f"<div style='margin-top:8px'>{extractive_summary(article.get('desc',''))}</div>",unsafe_allow_html=True)
+    st.markdown(f"<div style='margin-top:8px; color:#888;'>Volltext: {article.get('desc','')}</div>",unsafe_allow_html=True)
     cols=st.columns([1,1])
     with cols[0]:
-        if st.button("★ Favorit" if not is_fav else "✖ Entfernen",key=f"fav-{aid}"):
-            if not is_fav: add_favorite(username,aid)
-            else: remove_favorite(username,aid)
-            st.experimental_rerun()
+        if st.button("★ Favorit", key=f"fav-{aid}"):
+            add_favorite(username,aid)
+            st.success("Hinzugefügt")
     with cols[1]:
-        if st.button("Lesen",key=f"read-{aid}"):
-            st.session_state.last_read.insert(0,aid)
-            if len(st.session_state.last_read)>50: st.session_state.last_read=st.session_state.last_read[:50]
-            st.experimental_rerun()
+        if st.button("✖ Entfernen", key=f"unfav-{aid}"):
+            remove_favorite(username,aid)
+            st.info("Entfernt")
     st.markdown("</div>",unsafe_allow_html=True)
 
-# ----------------------------
-# Pages
-# ----------------------------
+# ---------- Page logic ----------
 if page=="🏠 Home":
-    st.markdown("<div class='banner'>🌟 Willkommen bei Lumina News v2.7 🌟</div>",unsafe_allow_html=True)
-    st.subheader("Top Nachrichten")
-    for cat in CATEGORIES:
-        for a in NEWS_DB[cat][:SETTINGS.get("home_count_each",2)]: render_news_card(a,cat)
-    st.subheader("Empfohlene für dich")
-    favcats=list(user_profile_stats(username).get("fav_by_category",{}).keys())
-    recommended=[]
-    if favcats:
-        for fc in favcats:
-            recommended.extend([(a,fc) for a in NEWS_DB.get(fc,[])])
-    for a,c in recommended[:6]: render_news_card(a,c)
-
-elif page=="🔎 Suche":
-    st.header("🔎 Suche")
-    query=st.text_input("Suchbegriff")
-    mood=st.selectbox("Stimmung filtern",["Alle","Positiv","Neutral","Negativ"])
-    min_imp=st.slider("Min. Wichtigkeit",1,5,1)
-    if query:
-        results=[]
-        for cat,lst in NEWS_DB.items():
-            for a in lst:
-                text=a.get("title","")+" "+a.get("desc","")
-                if query.lower() in text.lower() and a.get("importance",3)>=min_imp:
-                    s_label=classify_sentiment_label(sentiment_score(text))
-                    if mood=="Alle" or mood==s_label: results.append((a,cat))
-        if results:
-            st.subheader(f"{len(results)} Ergebnisse")
-            for a,c in results: render_news_card(a,c)
-        else:
-            st.info("Keine Ergebnisse gefunden.")
+    st.header("🏠 Home")
+    top_news = sorted(NEWS_DB,key=lambda x:x.get("importance",3),reverse=True)[:10]
+    for n in top_news:
+        render_news_card(n)
 
 elif page=="📚 Kategorien":
     st.header("📚 Kategorien")
-    cat_sel=st.selectbox("Kategorie wählen", CATEGORIES)
-    lst=NEWS_DB.get(cat_sel,[])
-    if lst:
-        for a in lst: render_news_card(a,cat_sel)
-    else:
-        st.info("Keine Nachrichten in dieser Kategorie.")
+    cat = st.selectbox("Kategorie wählen",CATEGORIES)
+    cat_news = NEWS_DB
+    for n in cat_news:
+        render_news_card(n)
+
+elif page=="🔎 Suche":
+    st.header("🔎 Suche")
+    q = st.text_input("Suchbegriff")
+    if st.button("Suchen"):
+        hits = [a for a in NEWS_DB if q.lower() in (a.get("title","")+a.get("desc","")).lower()]
+        st.write(f"{len(hits)} Treffer")
+        for n in hits: render_news_card(n)
+
+elif page=="📊 Analyse":
+    st.header("📊 Analyse")
+    from matplotlib import pyplot as plt
+    sentiments = [classify_sentiment_label(sentiment_score(a.get("desc","")+a.get("title",""))) for a in NEWS_DB]
+    pos = sentiments.count("Positiv")
+    neu = sentiments.count("Neutral")
+    neg = sentiments.count("Negativ")
+    fig,ax = plt.subplots()
+    ax.bar(["Positiv","Neutral","Negativ"],[pos,neu,neg],color=["#2ecc71","#3498db","#e74c3c"])
+    ax.set_ylabel("Anzahl Artikel")
+    st.pyplot(fig)
+
+    # Top Wörter
+    twords = Counter()
+    for a in NEWS_DB:
+        for w in tokenize(a.get("desc","")):
+            twords[w]+=1
+    top_words = twords.most_common(10)
+    st.write("Top Wörter:",top_words)
+    if top_words:
+        words,counts = zip(*top_words)
+        fig2,ax2 = plt.subplots()
+        ax2.barh(words,counts,color="#9b59b6")
+        ax2.invert_yaxis()
+        st.pyplot(fig2)
 
 elif page=="⭐ Favoriten":
-    st.header("⭐ Deine Favoriten")
-    favs=user_favorites(username)
-    if favs:
-        for fid in favs:
-            found=False
-            for cat,lst in NEWS_DB.items():
-                for a in lst:
-                    if a.get("id")==fid: render_news_card(a,cat); found=True
-            if not found:
-                st.markdown(f"<div class='card'>Artikel {fid} nicht gefunden.</div>", unsafe_allow_html=True)
+    st.header("⭐ Favoriten")
+    favs = user_favorites(username)
+    if not favs: st.info("Keine Favoriten")
     else:
-        st.info("Keine Favoriten gespeichert.")
-
-elif page=="⚙️ Einstellungen":
-    st.header("⚙️ Einstellungen")
-    theme_sel=st.selectbox("Theme auswählen", ["light","dark","neon"], index=["light","dark","neon"].index(st.session_state.theme))
-    top_count=st.number_input("Top-News pro Kategorie",1,10,value=SETTINGS.get("home_count_each",2))
-    if st.button("Speichern"):
-        SETTINGS["theme"]=theme_sel
-        SETTINGS["home_count_each"]=top_count
-        safe_save(SETTINGS_FILE,SETTINGS)
-        st.session_state.theme=theme_sel
-        inject_css()
-        st.success("Gespeichert")
-        st.experimental_rerun()
+        for fid in favs:
+            a = next((x for x in NEWS_DB if x.get("id")==fid),None)
+            if a: render_news_card(a)
