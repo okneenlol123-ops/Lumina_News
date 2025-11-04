@@ -14,6 +14,7 @@ import streamlit as st
 import json, os, re, requests
 from datetime import datetime, timedelta
 from collections import Counter
+st.write("API Key geladen:", st.secrets["newsapi"]["api_key"])
 
 # ----------------------------
 # Files
