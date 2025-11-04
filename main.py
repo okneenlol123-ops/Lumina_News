@@ -1,56 +1,62 @@
 import streamlit as st
+import json
+import os
 from datetime import datetime
 
 # =============================
-# 🌐 Lumina News - Offline Streamlit Edition
+# 🌐 Lumina News - Offline KI Version
 # =============================
 
-# ---------- Session-State Setup ----------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.username = ""
+st.set_page_config(page_title="Lumina News", layout="wide")
 
-# ---------- Dummy User-Daten ----------
-USERS = {"admin": "1234"}
+# ---------- Benutzerverwaltung ----------
+USERS_FILE = "users.json"
 
-# ---------- Offline News-Daten ----------
-NEWS_DB = {
-    "Powi": [
-        {"title": f"Powi-News {i+1}", "desc": f"Beschreibung für Powi-News {i+1}. Schülerinnen und Schüler diskutieren aktuelle Themen.", 
-         "date": f"2025-11-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Wirtschaft": [
-        {"title": f"Wirtschaft-News {i+1}", "desc": f"Beschreibung für Wirtschaft-News {i+1}. Wirtschaftliche Entwicklungen werden analysiert.", 
-         "date": f"2025-10-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Politik": [
-        {"title": f"Politik-News {i+1}", "desc": f"Beschreibung für Politik-News {i+1}. Politische Entscheidungen werden diskutiert.", 
-         "date": f"2025-09-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Sport": [
-        {"title": f"Sport-News {i+1}", "desc": f"Beschreibung für Sport-News {i+1}. Aktuelle Ereignisse im Sport.", 
-         "date": f"2025-08-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Technologie": [
-        {"title": f"Technologie-News {i+1}", "desc": f"Beschreibung für Technologie-News {i+1}. Neue technologische Entwicklungen.", 
-         "date": f"2025-07-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Weltweit": [
-        {"title": f"Weltweit-News {i+1}", "desc": f"Beschreibung für Weltweit-News {i+1}. Globale Ereignisse.", 
-         "date": f"2025-06-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ],
-    "Allgemein": [
-        {"title": f"Allgemein-News {i+1}", "desc": f"Beschreibung für Allgemein-News {i+1}. Verschiedene Themen.", 
-         "date": f"2025-05-{i+1:02d}", "importance": (i%5)+1} for i in range(10)
-    ]
-}
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+def register_user(username, password):
+    users = load_users()
+    if username in users:
+        return False
+    users[username] = password
+    save_users(users)
+    return True
+
+def login_user(username, password):
+    users = load_users()
+    return users.get(username) == password
+
+# ---------- Offline News Daten ----------
+def load_news():
+    categories = ["Powi", "Wirtschaft", "Politik", "Sport", "Technologie", "Weltweit", "Allgemein"]
+    data = {}
+    for cat in categories:
+        data[cat] = [
+            {
+                "title": f"{cat} News #{i+1}",
+                "desc": f"Dies ist eine lokale Beispielnachricht für {cat}. Hier könnten echte Inhalte angezeigt werden. "
+                        "Diese News wurde erstellt, um das Layout der Lumina News KI offline zu testen.",
+                "date": f"2025-11-{(i%28)+1:02d}",
+                "importance": (i % 5) + 1
+            }
+            for i in range(10)
+        ]
+    return data
+
+NEWS_DB = load_news()
 CATEGORIES = list(NEWS_DB.keys())
-
-# ---------- Sentiment-Analyse ----------
 POSITIVE = ["erfolgreich", "gewinnt", "stabil", "lobt", "positiv", "neue", "begeistert"]
 NEGATIVE = ["krise", "verlust", "erdbeben", "kritik", "problem", "streit"]
 
+# ---------- KI-Analyse ----------
 def analyze_sentiment(text):
     t = text.lower()
     pos = sum(w in t for w in POSITIVE)
@@ -59,8 +65,7 @@ def analyze_sentiment(text):
         return "😊 Positiv"
     elif neg > pos:
         return "😞 Negativ"
-    else:
-        return "😐 Neutral"
+    return "😐 Neutral"
 
 def top_words(news_list):
     freq = {}
@@ -71,34 +76,80 @@ def top_words(news_list):
                 freq[w] = freq.get(w, 0) + 1
     return sorted(freq.items(), key=lambda x: x[1], reverse=True)[:5]
 
-# ---------- Streamlit Layout ----------
-st.set_page_config(page_title="Lumina News", layout="wide")
-st.title("🌐 Lumina News - Offline Edition")
+# ---------- Session Setup ----------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
 
-# ---------- Login / Registrierung ----------
+# ---------- Titel ----------
+st.markdown(
+    """
+    <style>
+        h1 {
+            color: #004aad;
+        }
+        .stButton>button {
+            background-color: #004aad;
+            color: white;
+            border-radius: 8px;
+            padding: 8px 16px;
+        }
+        .stButton>button:hover {
+            background-color: #0066ff;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+st.title("🌐 Lumina News – Offline KI")
+
+# ---------- Login & Registrierung ----------
 if not st.session_state.logged_in:
-    st.subheader("🔐 Login")
-    with st.form("login_form"):
-        username = st.text_input("Benutzername")
-        password = st.text_input("Passwort", type="password")
-        submitted = st.form_submit_button("Einloggen")
-        if submitted:
-            if USERS.get(username) == password:
+    tab1, tab2 = st.tabs(["🔑 Anmelden", "🆕 Registrieren"])
+
+    with tab1:
+        u = st.text_input("Benutzername", key="login_user")
+        p = st.text_input("Passwort", type="password", key="login_pass")
+        if st.button("Einloggen"):
+            if login_user(u, p):
                 st.session_state.logged_in = True
-                st.session_state.username = username
-                st.success(f"Willkommen, {username}!")
+                st.session_state.username = u
+                st.success(f"Willkommen zurück, {u}!")
             else:
-                st.error("Falsche Zugangsdaten!")
+                st.error("❌ Falscher Benutzername oder Passwort.")
 
-# ---------- Hauptseite ----------
-if st.session_state.logged_in:
-    st.sidebar.title(f"👤 {st.session_state.username}")
-    st.sidebar.title("🗂️ Kategorien")
-    pages = CATEGORIES + ["Analyse Gesamt"]
-    choice = st.sidebar.radio("Wähle Kategorie:", pages)
+    with tab2:
+        new_u = st.text_input("Neuer Benutzername", key="reg_user")
+        new_p = st.text_input("Neues Passwort", type="password", key="reg_pass")
+        if st.button("Registrieren"):
+            if register_user(new_u, new_p):
+                st.success("✅ Registrierung erfolgreich! Bitte einloggen.")
+            else:
+                st.warning("⚠️ Benutzername existiert bereits.")
 
-    if choice != "Analyse Gesamt":
-        st.header(f"📰 {choice}")
+else:
+    # ---------- Sidebar ----------
+    st.sidebar.title(f"👤 Angemeldet als {st.session_state.username}")
+    pages = ["🏠 Home"] + CATEGORIES + ["📊 Analyse Gesamt"]
+    choice = st.sidebar.radio("Navigiere zu:", pages)
+
+    # ---------- Home ----------
+    if choice == "🏠 Home":
+        st.header("🏠 Startseite – Wichtigste News")
+        st.write("Hier siehst du die wichtigsten News aus allen Kategorien:")
+
+        for cat in CATEGORIES:
+            st.subheader(f"📚 {cat}")
+            top_news = sorted(NEWS_DB[cat], key=lambda x: x["importance"], reverse=True)[:2]
+            for n in top_news:
+                st.markdown(f"**{n['title']} ({n['date']})**")
+                st.write(n["desc"])
+                st.write(f"🧠 Stimmung: {analyze_sentiment(n['desc'])}")
+                st.divider()
+
+    # ---------- Einzelne Kategorien ----------
+    elif choice in CATEGORIES:
+        st.header(f"📰 {choice} – Nachrichtenübersicht")
         news_list = NEWS_DB[choice]
         sort_option = st.radio("Sortieren nach:", ["Wichtigkeit", "Datum"])
         if sort_option == "Datum":
@@ -115,8 +166,9 @@ if st.session_state.logged_in:
         st.markdown("### 🔍 Analyse dieser Kategorie")
         st.write("Top Wörter:", top_words(news_list))
 
-    else:
-        st.header("📊 Gesamtanalyse")
+    # ---------- Gesamtanalyse ----------
+    elif choice == "📊 Analyse Gesamt":
+        st.header("📊 Gesamtanalyse aller Kategorien")
         overall = {}
         for cat, news_list in NEWS_DB.items():
             sentiments = [analyze_sentiment(n["desc"]) for n in news_list]
@@ -135,4 +187,4 @@ if st.session_state.logged_in:
             st.write(stats)
 
         st.markdown("---")
-        st.info("✨ Zusammenfassung: Lumina News zeigt insgesamt ein ausgewogenes Nachrichtenbild mit leichten positiven Tendenzen.")
+        st.info("✨ Die Lumina KI zeigt aktuell ein ausgeglichenes Nachrichtenbild mit Tendenz zu positiven Meldungen.")
