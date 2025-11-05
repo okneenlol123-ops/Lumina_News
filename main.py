@@ -180,3 +180,74 @@ elif page=="⚙️ Profil / Einstellungen":
         st.success(f"Sprache auf {lang_choice} gesetzt!")
 
 st.markdown(f"*Letztes Update: {CACHE.get('last_update','Nie')}*")
+# ----------------------------
+# 🔄 Erweiterte Features (nur hinzugefügt, nichts ersetzt)
+# ----------------------------
+from collections import Counter
+
+# Optional: Echte Übersetzung, wenn googletrans vorhanden
+try:
+    from googletrans import Translator
+    translator = Translator()
+    def real_translate(text, target_lang):
+        try:
+            return translator.translate(text, dest=target_lang).text
+        except:
+            return text
+except:
+    def real_translate(text, target_lang): return text
+
+
+# 1️⃣ KI-Analyse der häufigsten Begriffe
+st.markdown("---")
+st.subheader("🧠 KI-News-Analyse")
+
+def analyse_news():
+    all_text = ""
+    for cat, arts in CACHE.get("articles", {}).items():
+        for art in arts:
+            all_text += " " + art.get("title","") + " " + art.get("desc","")
+    words = re.findall(r"[A-Za-zÄÖÜäöüß]+", all_text.lower())
+    stopwords = {"und","der","die","das","mit","ein","eine","für","auf","von","the","and","in","to","is","are"}
+    words = [w for w in words if w not in stopwords and len(w) > 3]
+    freq = Counter(words).most_common(10)
+    if not freq:
+        st.info("Noch keine Trenddaten verfügbar.")
+        return
+    st.write("**Top 10 Begriffe in aktuellen News:**")
+    for word, count in freq:
+        st.write(f"• {word.capitalize()} ({count}x)")
+
+analyse_news()
+
+# 2️⃣ Manuelles Update aller Kategorien
+st.markdown("---")
+st.subheader("🔄 News manuell aktualisieren")
+
+if st.button("Jetzt News neu laden"):
+    all_articles = {}
+    for cat in CATEGORIES:
+        st.write(f"⏳ Lade Kategorie **{cat}** ...")
+        all_articles[cat] = fetch_news(cat)
+    CACHE["articles"] = all_articles
+    CACHE["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_json(CACHE_FILE, CACHE)
+    st.success("✅ Alle Kategorien erfolgreich aktualisiert!")
+
+# 3️⃣ Anzeige des letzten Updates
+st.caption(f"🕒 Letztes automatisches Update: {CACHE.get('last_update','Nie')}")
+
+# 4️⃣ Sprachumschaltung mit echter Übersetzung (optional)
+if st.session_state.language == "de":
+    st.info("💡 Du hast Deutsch als Sprache gewählt. Übersetzungen werden automatisch vorgenommen, falls verfügbar.")
+    summarize_long = lambda text, content="", language="de", max_sentences=7: real_translate(" ".join(SENTENCE_RE.split(text)[:max_sentences]), "de")
+
+# 5️⃣ Passwortänderung Simulation (Profilseite erweitern)
+if page == "⚙️ Profil / Einstellungen":
+    st.markdown("---")
+    st.subheader("🔐 Passwort ändern (Demo)")
+    new_pw = st.text_input("Neues Passwort:", type="password")
+    if st.button("Passwort speichern"):
+        USERS["admin"] = new_pw or USERS["admin"]
+        save_json(USER_FILE, USERS)
+        st.success("Passwort erfolgreich geändert!")
