@@ -1,182 +1,263 @@
 # -*- coding: utf-8 -*-
+"""
+Lumina News v4.0 - Streamlit Edition mit API-News, längeren Zusammenfassungen & Sprachwahl
+"""
 import streamlit as st
-import requests, json, re
+import json, os, requests, re
+from collections import Counter
 from datetime import datetime
 
-API_KEY = "64457577c9a14eb9a846b69dcae0d659"
-CATEGORIES = ["business", "technology", "sports", "politics", "world", "health", "science"]
-
-CACHE_FILE = "news_cache.json"
+# ----------------------------
+# File paths
+# ----------------------------
+USERS_FILE = "users.json"
 FAV_FILE = "favorites.json"
-USER_FILE = "users.json"
+SETTINGS_FILE = "settings.json"
+CACHE_FILE = "news_cache.json"
 
 # ----------------------------
-# Laden/Speichern Cache
+# Safe JSON helpers
 # ----------------------------
-def load_json(file, default={}):
+def safe_load(path, default):
     try:
-        with open(file,"r",encoding="utf-8") as f:
-            return json.load(f)
+        if os.path.exists(path):
+            with open(path,"r",encoding="utf-8") as f:
+                return json.load(f)
     except:
-        return default
+        pass
+    return default
 
-def save_json(file, data):
+def safe_save(path,data):
     try:
-        with open(file,"w",encoding="utf-8") as f:
-            json.dump(data,f,ensure_ascii=False, indent=2)
+        with open(path,"w",encoding="utf-8") as f:
+            json.dump(data,f,ensure_ascii=False,indent=2)
     except:
-        st.warning(f"{file} konnte nicht gespeichert werden.")
-
-CACHE = load_json(CACHE_FILE, {"articles": {}, "last_update": ""})
-FAVORITES = load_json(FAV_FILE, {})
-USERS = load_json(USER_FILE, {"admin":"1234"})
+        st.error(f"Fehler beim Speichern von {path}")
 
 # ----------------------------
-# Spracheinstellungen (default Englisch)
+# Initialize persistent files if missing
 # ----------------------------
-if "language" not in st.session_state:
-    st.session_state.language = "en"
+if not os.path.exists(USERS_FILE):
+    safe_save(USERS_FILE, {"admin":"1234"})
+if not os.path.exists(FAV_FILE):
+    safe_save(FAV_FILE,{})
+if not os.path.exists(SETTINGS_FILE):
+    safe_save(SETTINGS_FILE, {"theme":"light","home_count_each":1,"language":"en"})
+if not os.path.exists(CACHE_FILE):
+    safe_save(CACHE_FILE, {"articles":[],"last_update":""})
+
+USERS = safe_load(USERS_FILE, {"admin":"1234"})
+FAVORITES = safe_load(FAV_FILE,{})
+SETTINGS = safe_load(SETTINGS_FILE, {"theme":"light","home_count_each":1,"language":"en"})
+CACHE = safe_load(CACHE_FILE, {"articles":[],"last_update":""})
 
 # ----------------------------
-# Zusammenfassung 7 Sätze, Sprache wählbar
+# Session-state defaults
 # ----------------------------
-SENTENCE_RE = re.compile(r'(?<=[.!?]) +')
-
-def summarize_long(text, content="", language="en", max_sentences=7):
-    if not text:
-        text = content or "No description available."
-    else:
-        text += " " + (content or "")
-    sentences = SENTENCE_RE.split(text)
-    summary = " ".join(sentences[:max_sentences])
-    if language=="de":
-        # einfache Übersetzung (offline, Platzhalter)
-        summary = fake_translate_de(summary)
-    return summary
-
-def fake_translate_de(text):
-    # Placeholder Übersetzung: für Demo, nur text zurückgeben
-    # Kann später durch echte Übersetzungs-API ersetzt werden
-    return text  # TODO: Hier echte Übersetzung einbauen
+if "username" not in st.session_state: st.session_state.username=""
+if "logged_in" not in st.session_state: st.session_state.logged_in=False
+if "theme" not in st.session_state: st.session_state.theme=SETTINGS.get("theme","light")
+if "last_read" not in st.session_state: st.session_state.last_read=[]
+if "language" not in st.session_state: st.session_state.language=SETTINGS.get("language","en")
 
 # ----------------------------
-# NewsAPI laden
+# Text processing helpers
 # ----------------------------
-def fetch_news(category):
-    url = f"https://newsapi.org/v2/top-headlines?category={category}&language=en&pageSize=10&apiKey={API_KEY}"
+WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+")
+STOPWORDS = set(["und","der","die","das","ein","eine","in","im","zu","von","mit","für","auf","ist","sind","wie","als","auch","an","bei","hat","haben","wird","werden","nicht","oder","aber"])
+
+def tokenize(text):
+    tokens = [t.lower() for t in WORD_RE.findall(text)]
+    return [t for t in tokens if t not in STOPWORDS and len(t)>2]
+
+def extractive_summary(text, max_sentences=7):
+    # längere Zusammenfassungen
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    if not sentences: return ""
+    tokens = tokenize(text)
+    freq = Counter(tokens)
+    scored = [(sum(freq.get(w,0) for w in tokenize(s)), s) for s in sentences]
+    scored.sort(key=lambda x:x[0], reverse=True)
+    chosen = [s for _,s in scored[:max_sentences]]
+    return " ".join(chosen)
+
+# ----------------------------
+# Favorites
+# ----------------------------
+def add_favorite(user,aid):
+    favs = FAVORITES.get(user,[])
+    if aid not in favs: favs.append(aid)
+    FAVORITES[user]=favs
+    safe_save(FAV_FILE,FAVORITES)
+
+def remove_favorite(user,aid):
+    favs = FAVORITES.get(user,[])
+    if aid in favs: favs.remove(aid)
+    FAVORITES[user]=favs
+    safe_save(FAV_FILE,FAVORITES)
+
+def user_favorites(user):
+    return FAVORITES.get(user,[])
+
+# ----------------------------
+# News fetching
+# ----------------------------
+API_KEY = "64457577c9a14eb9a846b69dcae0d659"
+def fetch_news():
+    url=f"https://newsapi.org/v2/top-headlines?language=en&pageSize=20&apiKey={API_KEY}"
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url,timeout=10)
         data = r.json()
-        if data.get("status")=="ok":
+        if data.get("status")=="ok" and "articles" in data:
             articles=[]
-            for a in data.get("articles",[]):
+            for a in data["articles"]:
                 articles.append({
-                    "title": a.get("title",""),
-                    "desc": a.get("description","") or "",
-                    "content": a.get("content","") or "",
-                    "date": a.get("publishedAt","")[:10],
-                    "url": a.get("url","")
+                    "id":a.get("url"),
+                    "title":a.get("title"),
+                    "description":a.get("description") or "",
+                    "content":a.get("content") or "",
+                    "source":a.get("source",{}).get("name",""),
+                    "date":a.get("publishedAt","")[:10],
+                    "category":"Allgemein"
                 })
-            CACHE["articles"][category] = articles
-            CACHE["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            save_json(CACHE_FILE, CACHE)
+            CACHE["articles"]=articles
+            CACHE["last_update"]=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            safe_save(CACHE_FILE,CACHE)
             return articles
     except:
-        st.warning("API konnte nicht geladen werden. Zeige letzte gespeicherte News.")
-    return CACHE.get("articles",{}).get(category, [])
+        st.warning("API konnte nicht geladen werden.")
+    return CACHE.get("articles",[])
 
-# ----------------------------
-# Favoriten
-# ----------------------------
-def add_favorite(article):
-    aid = article["url"]
-    if aid not in FAVORITES:
-        FAVORITES[aid] = article
-        save_json(FAV_FILE, FAVORITES)
-        st.success("Zur Favoritenliste hinzugefügt!")
-
-def remove_favorite(article):
-    aid = article["url"]
-    if aid in FAVORITES:
-        del FAVORITES[aid]
-        save_json(FAV_FILE, FAVORITES)
-        st.info("Aus Favoriten entfernt!")
-
-# ----------------------------
-# News Card
-# ----------------------------
-def render_card(article, show_fav=True):
-    st.markdown(f"### [{article['title']}]({article['url']})")
-    desc_text = summarize_long(article.get("desc",""), content=article.get("content",""), language=st.session_state.language)
-    st.markdown(desc_text)
-    if show_fav:
-        col1, col2 = st.columns([1,1])
-        with col1:
-            if st.button("★ Favorit", key=f"fav-{article['url']}"):
-                add_favorite(article)
-                st.experimental_rerun()
-        with col2:
-            if st.button("✖ Entfernen", key=f"unfav-{article['url']}"):
-                remove_favorite(article)
-                st.experimental_rerun()
-    st.markdown("---")
+NEWS = fetch_news()
 
 # ----------------------------
 # Streamlit UI
 # ----------------------------
-st.set_page_config(page_title="Lumina News v7.0", layout="wide")
-st.title("🌐 Lumina News v7.0")
+st.set_page_config(page_title="Lumina News v4.0",layout="wide")
+
+# Theme CSS
+LIGHT_CSS="""
+body { background-color: #f7f9fc; color:#0b1a2b; }
+.card { background:white; border-radius:8px;padding:12px;margin-bottom:12px; }
+.header { color:#004aad; }
+.small { color:#666;font-size:12px; }
+"""
+DARK_CSS="""
+body { background-color:#0b1220; color:#e6eef8; }
+.card { background:#0f1724;border-radius:8px;padding:12px;margin-bottom:12px; }
+.header { color:#66b2ff; }
+.small { color:#9fb7d9;font-size:12px; }
+"""
+def inject_css():
+    css = LIGHT_CSS if st.session_state.theme=="light" else DARK_CSS
+    st.markdown(f"<style>{css}</style>",unsafe_allow_html=True)
+inject_css()
+
+# Topbar
+col1,col2=st.columns([3,1])
+with col1: st.markdown("<h1 class='header'>🌐 Lumina News v4.0</h1>",unsafe_allow_html=True)
+with col2:
+    theme_choice = st.selectbox("Theme",["light","dark"],index=0 if st.session_state.theme=="light" else 1)
+    if theme_choice != st.session_state.theme:
+        st.session_state.theme=theme_choice
+        SETTINGS["theme"]=theme_choice
+        safe_save(SETTINGS_FILE,SETTINGS)
+        inject_css()
+
+st.markdown("---")
+
+# Login/Register
+if not st.session_state.logged_in:
+    lcol,rcol=st.columns(2)
+    with lcol:
+        st.subheader("🔐 Login")
+        with st.form("login_form"):
+            uname = st.text_input("Benutzername", key="login_user")
+            pwd = st.text_input("Passwort", type="password", key="login_pass")
+            submit = st.form_submit_button("Einloggen")
+            if submit:
+                users = safe_load(USERS_FILE, {"admin":"1234"})
+                if users.get(uname)==pwd:
+                    st.session_state.logged_in=True
+                    st.session_state.username=uname
+                    st.success(f"Willkommen {uname}!")
+                else:
+                    st.error("Falsche Zugangsdaten")
+    with rcol:
+        st.subheader("🆕 Registrierung")
+        with st.form("reg_form"):
+            r_uname = st.text_input("Neuer Benutzername", key="reg_user")
+            r_pwd = st.text_input("Neues Passwort", type="password", key="reg_pass")
+            reg_submit = st.form_submit_button("Registrieren")
+            if reg_submit:
+                users = safe_load(USERS_FILE, {"admin":"1234"})
+                if not r_uname or not r_pwd: st.warning("Bitte Name & Passwort")
+                elif r_uname in users: st.warning("Benutzer existiert bereits")
+                else:
+                    users[r_uname]=r_pwd
+                    safe_save(USERS_FILE,users)
+                    st.success("Registrierung erfolgreich! Bitte anmelden")
+    st.stop()
+
+username = st.session_state.username
 
 # Sidebar
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Gehe zu:", ["🏠 Home", "📚 Kategorien", "⭐ Favoriten", "⚙️ Profil / Einstellungen"])
+st.sidebar.title(f"👤 {username}")
+page = st.sidebar.radio("Navigation",["🏠 Home","📚 Kategorien","⭐ Favoriten","⚙️ Profil / Einstellungen"])
 
-# Home
+# Sprache wählen
+st.sidebar.subheader("Sprache Zusammenfassungen")
+lang_choice = st.sidebar.selectbox("Sprache",["Englisch","Deutsch"], index=0 if st.session_state.language=="en" else 1)
+st.session_state.language = "en" if lang_choice=="Englisch" else "de"
+
+# Hilfsfunktion: Render Card
+def render_card(article):
+    if st.session_state.language=="de":
+        summary = extractive_summary(article.get("description","")+" "+article.get("content",""))
+        # einfache Übersetzung mock (API oder deepl kann hier verwendet werden)
+        summary = " ".join([s+" (DE)" for s in summary.split(".") if s])
+    else:
+        summary = extractive_summary(article.get("description","")+" "+article.get("content",""))
+    st.markdown(f"<div class='card'>",unsafe_allow_html=True)
+    st.markdown(f"**{article.get('title','')}** <span class='small'>{article.get('date')}</span>")
+    st.markdown(summary)
+    cols=st.columns([1,1])
+    with cols[0]:
+        if st.button("★ Favorit", key=f"fav-{article.get('id')}"):
+            add_favorite(username,article.get("id"))
+    with cols[1]:
+        if st.button("✖ Entfernen", key=f"unfav-{article.get('id')}"):
+            remove_favorite(username,article.get("id"))
+    st.markdown("</div>",unsafe_allow_html=True)
+
+# ---------- Page Logic ----------
 if page=="🏠 Home":
-    st.header("🏠 Home — Eine News pro Kategorie")
-    for i in range(0,len(CATEGORIES),2):
-        cols = st.columns(2)
-        for j, cat in enumerate(CATEGORIES[i:i+2]):
-            with cols[j]:
-                st.subheader(cat.capitalize())
-                news_list = fetch_news(cat)
-                if news_list:
-                    render_card(news_list[0], show_fav=True)
-                else:
-                    st.write("Keine News verfügbar.")
+    st.header("🏠 Home — Top News")
+    # je 1 Artikel
+    categories = list(set([a.get("category","Allgemein") for a in NEWS]))
+    for cat in categories:
+        cat_news = [a for a in NEWS if a.get("category")==cat]
+        if cat_news:
+            render_card(cat_news[0])
 
-# Kategorien
 elif page=="📚 Kategorien":
     st.header("📚 Kategorien")
-    selected_cat = st.selectbox("Kategorie wählen:", CATEGORIES)
-    news_list = fetch_news(selected_cat)
-    if news_list:
-        for article in news_list:
-            render_card(article)
-    else:
-        st.write("Keine News verfügbar.")
+    cats = list(set([a.get("category","Allgemein") for a in NEWS]))
+    sel_cat = st.selectbox("Kategorie wählen", cats)
+    cat_articles = [a for a in NEWS if a.get("category")==sel_cat]
+    for a in cat_articles:
+        render_card(a)
 
-# Favoriten
 elif page=="⭐ Favoriten":
     st.header("⭐ Deine Favoriten")
-    if FAVORITES:
-        for aid, article in FAVORITES.items():
-            render_card(article, show_fav=True)
+    favs = user_favorites(username)
+    if not favs: st.info("Keine Favoriten")
     else:
-        st.info("Keine Favoriten. Klicke auf ★ bei einer News, um sie hier zu speichern.")
+        for aid in favs:
+            art = next((a for a in NEWS if a.get("id")==aid), None)
+            if art: render_card(art)
 
-# Profil / Einstellungen
 elif page=="⚙️ Profil / Einstellungen":
     st.header("⚙️ Profil / Einstellungen")
-    st.subheader("Benutzerinformationen")
-    st.text(f"Benutzername: admin")  # TODO: Login-System einbauen
-    st.text_input("Passwort ändern:", type="password")
-    
-    st.subheader("Sprache der Zusammenfassungen")
-    lang_choice = st.selectbox("Sprache wählen:", ["Englisch", "Deutsch"])
-    lang_code = "en" if lang_choice=="Englisch" else "de"
-    if lang_code != st.session_state.language:
-        st.session_state.language = lang_code
-        st.success(f"Sprache auf {lang_choice} gesetzt!")
-
-st.markdown(f"*Letztes Update: {CACHE.get('last_update','Nie')}*")
+    st.write(f"Benutzername: **{username}**")
+    st.write(f"Passwort: **{USERS.get(username,'')}**")
