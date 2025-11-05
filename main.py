@@ -2,17 +2,6 @@
 import streamlit as st
 import requests, json, re
 from datetime import datetime
-from collections import Counter
-
-# ----------------------------
-# Basis-Setup
-# ----------------------------
-API_KEY = "64457577c9a14eb9a846b69dcae0d659"Backup 6 news gut
-
-# -*- coding: utf-8 -*-
-import streamlit as st
-import requests, json, re
-from datetime import datetime
 
 API_KEY = "64457577c9a14eb9a846b69dcae0d659"
 CATEGORIES = ["business", "technology", "sports", "politics", "world", "health", "science"]
