@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Lumina News v5.0 - Streamlit Edition mit NewsAPI.org & längere Zusammenfassungen
+Lumina News v6.0 - Streamlit Edition mit NewsAPI.org, längeren Zusammenfassungen und Kartenlayout
 """
 import streamlit as st
 import requests, json, re
 from datetime import datetime
-from collections import Counter
 
 # ----------------------------
 # API Key (NewsAPI.org)
@@ -55,13 +54,15 @@ CACHE = load_cache()
 FAVORITES = load_favorites()
 
 # ----------------------------
-# Zusammenfassung: 6-7 Sätze
+# Zusammenfassung: 10-12 Sätze
 # ----------------------------
 SENTENCE_RE = re.compile(r'(?<=[.!?]) +')
 
-def summarize_long(text, max_sentences=7):
+def summarize_long(text, content="", max_sentences=12):
     if not text:
-        return "Keine Beschreibung verfügbar."
+        text = content or "Keine Beschreibung verfügbar."
+    else:
+        text += " " + (content or "")
     sentences = SENTENCE_RE.split(text)
     return " ".join(sentences[:max_sentences])
 
@@ -83,7 +84,6 @@ def fetch_news(category):
                     "date": a.get("publishedAt","")[:10],
                     "url": a.get("url","")
                 })
-            # cache pro Kategorie
             CACHE["articles"][category] = articles
             CACHE["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             save_cache(CACHE)
@@ -91,18 +91,6 @@ def fetch_news(category):
     except:
         st.warning("API konnte nicht geladen werden. Zeige letzte gespeicherte News.")
     return CACHE.get("articles",{}).get(category, [])
-
-# ----------------------------
-# Streamlit UI
-# ----------------------------
-st.set_page_config(page_title="Lumina News v5.0", layout="wide")
-st.title("🌐 Lumina News v5.0")
-
-# ----------------------------
-# Sidebar Navigation
-# ----------------------------
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Gehe zu:", ["🏠 Home", "📚 Kategorien", "⭐ Favoriten"])
 
 # ----------------------------
 # Favoriten Management
@@ -122,12 +110,12 @@ def remove_favorite(article):
         st.info("Aus Favoriten entfernt!")
 
 # ----------------------------
-# Helper: render News Card
+# Helper: render News Card (mit längeren Texten)
 # ----------------------------
 def render_card(article, show_fav=True):
-    st.markdown(f"**[{article['title']}]({article['url']})**")
-    desc_text = article.get("desc","") or article.get("content","")
-    st.markdown(summarize_long(desc_text))
+    st.markdown(f"### [{article['title']}]({article['url']})")
+    desc_text = summarize_long(article.get("desc",""), content=article.get("content",""), max_sentences=12)
+    st.markdown(desc_text)
     if show_fav:
         col1, col2 = st.columns([1,1])
         with col1:
@@ -141,17 +129,32 @@ def render_card(article, show_fav=True):
     st.markdown("---")
 
 # ----------------------------
-# Page: Home
+# Streamlit UI
+# ----------------------------
+st.set_page_config(page_title="Lumina News v6.0", layout="wide")
+st.title("🌐 Lumina News v6.0")
+
+# ----------------------------
+# Sidebar Navigation
+# ----------------------------
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Gehe zu:", ["🏠 Home", "📚 Kategorien", "⭐ Favoriten"])
+
+# ----------------------------
+# Page: Home (Karten nebeneinander)
 # ----------------------------
 if page=="🏠 Home":
     st.header("🏠 Home — Je eine News pro Kategorie")
-    for cat in CATEGORIES:
-        st.subheader(cat.capitalize())
-        news_list = fetch_news(cat)
-        if news_list:
-            render_card(news_list[0], show_fav=True)
-        else:
-            st.write("Keine News verfügbar.")
+    for i in range(0, len(CATEGORIES), 2):
+        cols = st.columns(2)
+        for j, cat in enumerate(CATEGORIES[i:i+2]):
+            with cols[j]:
+                st.subheader(cat.capitalize())
+                news_list = fetch_news(cat)
+                if news_list:
+                    render_card(news_list[0], show_fav=True)
+                else:
+                    st.write("Keine News verfügbar.")
 
 # ----------------------------
 # Page: Kategorien
