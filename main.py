@@ -1,4 +1,3 @@
-Backup news 9 gut
 # -*- coding: utf-8 -*-
 import streamlit as st
 import requests, json, re
